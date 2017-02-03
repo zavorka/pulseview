@@ -91,7 +91,7 @@ void InputFile::run()
 	if (!f) {
 		// Previous call to run() processed the entire file already
 		f = new std::ifstream(file_name_, std::ios::binary);
-		input_.reset();
+		input_->reset();
 	}
 
 	interrupt_ = false;
