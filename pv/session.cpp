@@ -987,7 +987,7 @@ void Session::feed_in_analog(shared_ptr<Analog> analog)
 	bool sweep_beginning = false;
 
 	unique_ptr<float> data(new float[analog->num_samples()]);
-	analog->get_data_as_float(data.get());
+	// analog->get_data_as_float(data.get());
 
 	if (signalbases_.empty())
 		update_signals();
