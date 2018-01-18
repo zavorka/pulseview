@@ -39,6 +39,9 @@
 **
 ****************************************************************************/
 
+#ifndef PULSEVIEW_PV_WIDGETS_WELLARRAY_HPP
+#define PULSEVIEW_PV_WIDGETS_WELLARRAY_HPP
+
 #include <QWidget>
 
 namespace pv {
@@ -53,7 +56,7 @@ class WellArray : public QWidget
     Q_PROPERTY(int selectedRow READ selectedRow)
 
 public:
-    WellArray(int rows, int cols, QWidget* parent=0);
+    WellArray(int rows, int cols, QWidget* parent = nullptr);
     QString cellContent(int row, int col) const;
 
     int selectedColumn() const { return selCol; }
@@ -135,5 +138,7 @@ private:
     WellArrayData *d;
 };
 
-} // namespace wellarray
+}  // namespace widgets
 } // namespace pv
+
+#endif // PULSEVIEW_PV_WIDGETS_WELLARRAY_HPP

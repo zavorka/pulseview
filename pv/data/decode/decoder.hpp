@@ -23,8 +23,13 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <vector>
 
 #include <glib.h>
+
+using std::map;
+using std::string;
+using std::vector;
 
 struct srd_decoder;
 struct srd_decoder_inst;
@@ -35,6 +40,7 @@ namespace pv {
 
 namespace data {
 
+struct DecodeChannel;
 class Logic;
 class SignalBase;
 
@@ -52,30 +58,24 @@ public:
 	bool shown() const;
 	void show(bool show = true);
 
-	const std::map<const srd_channel*,
-		std::shared_ptr<data::SignalBase> >& channels() const;
-	void set_channels(std::map<const srd_channel*,
-		std::shared_ptr<data::SignalBase> > channels);
+	const vector<data::DecodeChannel*>& channels() const;
+	void set_channels(vector<data::DecodeChannel*> channels);
 
-	const std::map<std::string, GVariant*>& options() const;
+	const map<string, GVariant*>& options() const;
 
 	void set_option(const char *id, GVariant *value);
 
 	bool have_required_channels() const;
 
-	srd_decoder_inst* create_decoder_inst(
-		srd_session *session) const;
-
-	std::set< std::shared_ptr<pv::data::Logic> > get_data();
+	srd_decoder_inst* create_decoder_inst(srd_session *session) const;
 
 private:
 	const srd_decoder *const decoder_;
 
 	bool shown_;
 
-	std::map<const srd_channel*, std::shared_ptr<pv::data::SignalBase> >
-		channels_;
-	std::map<std::string, GVariant*> options_;
+	vector<data::DecodeChannel*> channels_;
+	map<string, GVariant*> options_;
 };
 
 } // namespace decode

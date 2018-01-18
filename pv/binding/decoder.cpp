@@ -23,15 +23,14 @@
 
 #include <boost/none_t.hpp>
 
-#include <pv/data/decoderstack.hpp>
 #include <pv/data/decode/decoder.hpp>
+#include <pv/data/decodesignal.hpp>
 #include <pv/prop/double.hpp>
 #include <pv/prop/enum.hpp>
 #include <pv/prop/int.hpp>
 #include <pv/prop/string.hpp>
 
 using boost::none;
-using std::make_pair;
 using std::map;
 using std::pair;
 using std::shared_ptr;
@@ -48,9 +47,9 @@ namespace pv {
 namespace binding {
 
 Decoder::Decoder(
-	shared_ptr<pv::data::DecoderStack> decoder_stack,
+	shared_ptr<pv::data::DecodeSignal> decode_signal,
 	shared_ptr<data::decode::Decoder> decoder) :
-	decoder_stack_(decoder_stack),
+	decode_signal_(decode_signal),
 	decoder_(decoder)
 {
 	assert(decoder_);
@@ -72,16 +71,16 @@ Decoder::Decoder(
 		shared_ptr<Property> prop;
 
 		if (opt->values)
-			prop = bind_enum(name, opt, get, set);
+			prop = bind_enum(name, "", opt, get, set);
 		else if (g_variant_is_of_type(opt->def, G_VARIANT_TYPE("d")))
-			prop = shared_ptr<Property>(new Double(name, 2, "",
+			prop = shared_ptr<Property>(new Double(name, "", 2, "",
 				none, none, get, set));
 		else if (g_variant_is_of_type(opt->def, G_VARIANT_TYPE("x")))
 			prop = shared_ptr<Property>(
-				new Int(name, "", none, get, set));
+				new Int(name, "", "", none, get, set));
 		else if (g_variant_is_of_type(opt->def, G_VARIANT_TYPE("s")))
 			prop = shared_ptr<Property>(
-				new String(name, get, set));
+				new String(name, "", get, set));
 		else
 			continue;
 
@@ -90,16 +89,17 @@ Decoder::Decoder(
 }
 
 shared_ptr<Property> Decoder::bind_enum(
-	const QString &name, const srd_decoder_option *option,
+	const QString &name, const QString &desc,
+	const srd_decoder_option *option,
 	Property::Getter getter, Property::Setter setter)
 {
 	vector< pair<Glib::VariantBase, QString> > values;
 	for (GSList *l = option->values; l; l = l->next) {
 		Glib::VariantBase var = Glib::VariantBase((GVariant*)l->data, true);
-		values.push_back(make_pair(var, print_gvariant(var)));
+		values.emplace_back(var, print_gvariant(var));
 	}
 
-	return shared_ptr<Property>(new Enum(name, values, getter, setter));
+	return shared_ptr<Property>(new Enum(name, desc, values, getter, setter));
 }
 
 Glib::VariantBase Decoder::getter(const char *id)
@@ -128,10 +128,7 @@ Glib::VariantBase Decoder::getter(const char *id)
 		}
 	}
 
-	if (val)
-		return Glib::VariantBase(val, true);
-	else
-		return Glib::VariantBase();
+	return (val) ? Glib::VariantBase(val, true) : Glib::VariantBase();
 }
 
 void Decoder::setter(const char *id, Glib::VariantBase value)
@@ -139,9 +136,9 @@ void Decoder::setter(const char *id, Glib::VariantBase value)
 	assert(decoder_);
 	decoder_->set_option(id, value.gobj());
 
-	assert(decoder_stack_);
-	decoder_stack_->begin_decode();
+	assert(decode_signal_);
+	decode_signal_->begin_decode();
 }
 
-} // binding
-} // pv
+}  // namespace binding
+}  // namespace pv

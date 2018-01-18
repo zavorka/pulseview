@@ -17,7 +17,7 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <assert.h>
+#include <cassert>
 
 #include "popuptoolbutton.hpp"
 
@@ -53,5 +53,5 @@ void PopupToolButton::on_clicked(bool)
 	popup_->show();
 }
 
-} // widgets
-} // pv
+}  // namespace widgets
+}  // namespace pv

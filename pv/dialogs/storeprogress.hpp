@@ -27,6 +27,11 @@
 
 #include <pv/storesession.hpp>
 
+using std::map;
+using std::pair;
+using std::shared_ptr;
+using std::string;
+
 namespace pv {
 
 class Session;
@@ -39,11 +44,10 @@ class StoreProgress : public QProgressDialog
 
 public:
 	StoreProgress(const QString &file_name,
-		const std::shared_ptr<sigrok::OutputFormat> output_format,
-		const std::map<std::string, Glib::VariantBase> &options,
-		const std::pair<uint64_t, uint64_t> sample_range,
-		const Session &session,
-		QWidget *parent = 0);
+		const shared_ptr<sigrok::OutputFormat> output_format,
+		const map<string, Glib::VariantBase> &options,
+		const pair<uint64_t, uint64_t> sample_range,
+		const Session &session, QWidget *parent = nullptr);
 
 	virtual ~StoreProgress();
 
@@ -61,7 +65,7 @@ private:
 	pv::StoreSession session_;
 };
 
-} // dialogs
-} // pv
+}  // namespace dialogs
+}  // namespace pv
 
 #endif // PULSEVIEW_PV_DIALOGS_SAVEPROGRESS_HPP

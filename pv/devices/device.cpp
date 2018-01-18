@@ -23,12 +23,10 @@
 
 #include "device.hpp"
 
-using std::map;
-using std::set;
+using std::shared_ptr;
 
 using sigrok::ConfigKey;
 using sigrok::Capability;
-using sigrok::Error;
 
 using Glib::VariantBase;
 using Glib::Variant;
@@ -36,22 +34,18 @@ using Glib::Variant;
 namespace pv {
 namespace devices {
 
-Device::Device()
-{
-}
-
 Device::~Device()
 {
 	if (session_)
 		session_->remove_datafeed_callbacks();
 }
 
-std::shared_ptr<sigrok::Session> Device::session() const
+shared_ptr<sigrok::Session> Device::session() const
 {
 	return session_;
 }
 
-std::shared_ptr<sigrok::Device> Device::device() const
+shared_ptr<sigrok::Device> Device::device() const
 {
 	return device_;
 }

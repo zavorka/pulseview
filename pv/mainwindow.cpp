@@ -17,13 +17,14 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <cassert>
-
 #ifdef ENABLE_DECODE
 #include <libsigrokdecode/libsigrokdecode.h>
 #endif
 
 #include <algorithm>
+#include <cassert>
+#include <cstdarg>
+#include <cstdint>
 #include <iterator>
 
 #include <QAction>
@@ -33,26 +34,26 @@
 #include <QHBoxLayout>
 #include <QMessageBox>
 #include <QSettings>
+#include <QShortcut>
 #include <QWidget>
 
 #include "mainwindow.hpp"
 
 #include "devicemanager.hpp"
-#include "util.hpp"
 #include "devices/hardwaredevice.hpp"
-#include "dialogs/about.hpp"
+#include "dialogs/settings.hpp"
+#include "globalsettings.hpp"
 #include "toolbars/mainbar.hpp"
-#include "view/view.hpp"
+#include "util.hpp"
+#include "views/trace/view.hpp"
 #include "views/trace/standardbar.hpp"
 
-#include <stdint.h>
-#include <stdarg.h>
 #include <libsigrokcxx/libsigrokcxx.hpp>
 
+using std::bind;
 using std::dynamic_pointer_cast;
-using std::list;
 using std::make_shared;
-using std::map;
+using std::placeholders::_1;
 using std::shared_ptr;
 using std::string;
 
@@ -66,70 +67,38 @@ using toolbars::MainBar;
 
 const QString MainWindow::WindowTitle = tr("PulseView");
 
-MainWindow::MainWindow(DeviceManager &device_manager,
-	string open_file_name, string open_file_format,
-	QWidget *parent) :
+MainWindow::MainWindow(DeviceManager &device_manager, QWidget *parent) :
 	QMainWindow(parent),
 	device_manager_(device_manager),
 	session_selector_(this),
 	session_state_mapper_(this),
-	action_view_sticky_scrolling_(new QAction(this)),
-	action_view_coloured_bg_(new QAction(this)),
-	action_about_(new QAction(this)),
 	icon_red_(":/icons/status-red.svg"),
 	icon_green_(":/icons/status-green.svg"),
 	icon_grey_(":/icons/status-grey.svg")
 {
 	qRegisterMetaType<util::Timestamp>("util::Timestamp");
+	qRegisterMetaType<uint64_t>("uint64_t");
+
+	GlobalSettings::register_change_handler(GlobalSettings::Key_View_ColouredBG,
+		bind(&MainWindow::on_settingViewColouredBg_changed, this, _1));
+
+	GlobalSettings::register_change_handler(GlobalSettings::Key_View_ShowSamplingPoints,
+		bind(&MainWindow::on_settingViewShowSamplingPoints_changed, this, _1));
+
+	GlobalSettings::register_change_handler(GlobalSettings::Key_View_ShowAnalogMinorGrid,
+		bind(&MainWindow::on_settingViewShowAnalogMinorGrid_changed, this, _1));
+
+	GlobalSettings settings;
+	settings.set_defaults_where_needed();
 
 	setup_ui();
 	restore_ui_settings();
-
-	if (!open_file_name.empty()) {
-		shared_ptr<Session> session = add_session();
-		session->load_init_file(open_file_name, open_file_format);
-	}
-
-	// Add empty default session if there aren't any sessions
-	if (sessions_.size() == 0) {
-		shared_ptr<Session> session = add_session();
-
-		map<string, string> dev_info;
-		shared_ptr<devices::HardwareDevice> other_device, demo_device;
-
-		// Use any available device that's not demo
-		for (shared_ptr<devices::HardwareDevice> dev : device_manager_.devices()) {
-			if (dev->hardware_device()->driver()->name() == "demo") {
-				demo_device = dev;
-			} else {
-				other_device = dev;
-			}
-		}
-
-		// ...and if there isn't any, just use demo then
-		session->select_device(other_device ? other_device : demo_device);
-	}
 }
 
 MainWindow::~MainWindow()
 {
 	while (!sessions_.empty())
 		remove_session(sessions_.front());
-}
-
-QAction* MainWindow::action_view_sticky_scrolling() const
-{
-	return action_view_sticky_scrolling_;
-}
-
-QAction* MainWindow::action_view_coloured_bg() const
-{
-	return action_view_coloured_bg_;
-}
-
-QAction* MainWindow::action_about() const
-{
-	return action_about_;
 }
 
 shared_ptr<views::ViewBase> MainWindow::get_active_view() const
@@ -140,13 +109,13 @@ shared_ptr<views::ViewBase> MainWindow::get_active_view() const
 
 	// ...otherwise find the dock widget the widget with focus is contained in
 	QObject *w = QApplication::focusWidget();
-	QDockWidget *dock = 0;
+	QDockWidget *dock = nullptr;
 
 	while (w) {
-	    dock = qobject_cast<QDockWidget*>(w);
-	    if (dock)
-	        break;
-	    w = w->parent();
+		dock = qobject_cast<QDockWidget*>(w);
+		if (dock)
+			break;
+		w = w->parent();
 	}
 
 	// Get the view contained in the dock widget
@@ -160,6 +129,9 @@ shared_ptr<views::ViewBase> MainWindow::get_active_view() const
 shared_ptr<views::ViewBase> MainWindow::add_view(const QString &title,
 	views::ViewType type, Session &session)
 {
+	GlobalSettings settings;
+	shared_ptr<views::ViewBase> v;
+
 	QMainWindow *main_window = nullptr;
 	for (auto entry : session_windows_)
 		if (entry.first.get() == &session)
@@ -167,72 +139,80 @@ shared_ptr<views::ViewBase> MainWindow::add_view(const QString &title,
 
 	assert(main_window);
 
+	shared_ptr<MainBar> main_bar = session.main_bar();
+
+	QDockWidget* dock = new QDockWidget(title, main_window);
+	dock->setObjectName(title);
+	main_window->addDockWidget(Qt::TopDockWidgetArea, dock);
+
+	// Insert a QMainWindow into the dock widget to allow for a tool bar
+	QMainWindow *dock_main = new QMainWindow(dock);
+	dock_main->setWindowFlags(Qt::Widget);  // Remove Qt::Window flag
+
+	if (type == views::ViewTypeTrace)
+		// This view will be the main view if there's no main bar yet
+		v = make_shared<views::trace::View>(session,
+			(main_bar ? false : true), dock_main);
+
+	if (!v)
+		return nullptr;
+
+	view_docks_[dock] = v;
+	session.register_view(v);
+
+	dock_main->setCentralWidget(v.get());
+	dock->setWidget(dock_main);
+
+	dock->setContextMenuPolicy(Qt::PreventContextMenu);
+	dock->setFeatures(QDockWidget::DockWidgetMovable |
+		QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetClosable);
+
+	QAbstractButton *close_btn =
+		dock->findChildren<QAbstractButton*>
+			("qt_dockwidget_closebutton").front();
+
+	connect(close_btn, SIGNAL(clicked(bool)),
+		this, SLOT(on_view_close_clicked()));
+
+	connect(&session, SIGNAL(trigger_event(util::Timestamp)),
+		qobject_cast<views::ViewBase*>(v.get()),
+		SLOT(trigger_event(util::Timestamp)));
+
 	if (type == views::ViewTypeTrace) {
-		QDockWidget* dock = new QDockWidget(title, main_window);
-		dock->setObjectName(title);
-		main_window->addDockWidget(Qt::TopDockWidgetArea, dock);
+		views::trace::View *tv =
+			qobject_cast<views::trace::View*>(v.get());
 
-		// Insert a QMainWindow into the dock widget to allow for a tool bar
-		QMainWindow *dock_main = new QMainWindow(dock);
-		dock_main->setWindowFlags(Qt::Widget);  // Remove Qt::Window flag
+		tv->enable_coloured_bg(settings.value(GlobalSettings::Key_View_ColouredBG).toBool());
+		tv->enable_show_sampling_points(settings.value(GlobalSettings::Key_View_ShowSamplingPoints).toBool());
+		tv->enable_show_analog_minor_grid(settings.value(GlobalSettings::Key_View_ShowAnalogMinorGrid).toBool());
 
-		shared_ptr<views::TraceView::View> v =
-			make_shared<views::TraceView::View>(session, dock_main);
-		view_docks_[dock] = v;
-		session.register_view(v);
+		if (!main_bar) {
+			/* Initial view, create the main bar */
+			main_bar = make_shared<MainBar>(session, this, tv);
+			dock_main->addToolBar(main_bar.get());
+			session.set_main_bar(main_bar);
 
-		dock_main->setCentralWidget(v.get());
-		dock->setWidget(dock_main);
+			connect(main_bar.get(), SIGNAL(new_view(Session*)),
+				this, SLOT(on_new_view(Session*)));
 
-		dock->setFeatures(QDockWidget::DockWidgetMovable |
-			QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetClosable);
+			main_bar->action_view_show_cursors()->setChecked(tv->cursors_shown());
 
-		QAbstractButton *close_btn =
-			dock->findChildren<QAbstractButton*>
-				("qt_dockwidget_closebutton").front();
+			/* For the main view we need to prevent the dock widget from
+			 * closing itself when its close button is clicked. This is
+			 * so we can confirm with the user first. Regular views don't
+			 * need this */
+			close_btn->disconnect(SIGNAL(clicked()), dock, SLOT(close()));
+		} else {
+			/* Additional view, create a standard bar */
+			pv::views::trace::StandardBar *standard_bar =
+				new pv::views::trace::StandardBar(session, this, tv);
+			dock_main->addToolBar(standard_bar);
 
-		connect(close_btn, SIGNAL(clicked(bool)),
-			this, SLOT(on_view_close_clicked()));
-
-		if (type == views::ViewTypeTrace) {
-			connect(&session, SIGNAL(trigger_event(util::Timestamp)),
-				qobject_cast<views::ViewBase*>(v.get()),
-				SLOT(trigger_event(util::Timestamp)));
-
-			v->enable_sticky_scrolling(action_view_sticky_scrolling_->isChecked());
-			v->enable_coloured_bg(action_view_coloured_bg_->isChecked());
-
-			shared_ptr<MainBar> main_bar = session.main_bar();
-			if (!main_bar) {
-				/* Initial view, create the main bar */
-				main_bar = make_shared<MainBar>(session, this, v.get());
-				dock_main->addToolBar(main_bar.get());
-				session.set_main_bar(main_bar);
-
-				connect(main_bar.get(), SIGNAL(new_view(Session*)),
-					this, SLOT(on_new_view(Session*)));
-
-				main_bar->action_view_show_cursors()->setChecked(v->cursors_shown());
-
-				/* For the main view we need to prevent the dock widget from
-				 * closing itself when its close button is clicked. This is
-				 * so we can confirm with the user first. Regular views don't
-				 * need this */
-				close_btn->disconnect(SIGNAL(clicked()), dock, SLOT(close()));
-			} else {
-				/* Additional view, create a standard bar */
-				pv::views::trace::StandardBar *standard_bar =
-					new pv::views::trace::StandardBar(session, this, v.get());
-				dock_main->addToolBar(standard_bar);
-
-				standard_bar->action_view_show_cursors()->setChecked(v->cursors_shown());
-			}
+			standard_bar->action_view_show_cursors()->setChecked(tv->cursors_shown());
 		}
-
-		return v;
 	}
 
-	return nullptr;
+	return v;
 }
 
 void MainWindow::remove_view(shared_ptr<views::ViewBase> view)
@@ -251,7 +231,7 @@ void MainWindow::remove_view(shared_ptr<views::ViewBase> view)
 				// call deleteLater() on it, which causes a double free
 				// since the shared_ptr in view_docks_ doesn't know
 				// that Qt keeps a pointer to the view around
-				view->setParent(0);
+				view->setParent(nullptr);
 
 				// Delete the view's dock widget and all widgets inside it
 				entry.first->deleteLater();
@@ -266,7 +246,7 @@ void MainWindow::remove_view(shared_ptr<views::ViewBase> view)
 shared_ptr<Session> MainWindow::add_session()
 {
 	static int last_session_id = 1;
-	QString name = tr("Untitled-%1").arg(last_session_id++);
+	QString name = tr("Session %1").arg(last_session_id++);
 
 	shared_ptr<Session> session = make_shared<Session>(device_manager_, name);
 
@@ -298,7 +278,17 @@ shared_ptr<Session> MainWindow::add_session()
 
 void MainWindow::remove_session(shared_ptr<Session> session)
 {
+	// Determine the height of the button before it collapses
 	int h = new_session_button_->height();
+
+	// Stop capture while the session still exists so that the UI can be
+	// updated in case we're currently running. If so, this will schedule a
+	// call to our on_capture_state_changed() slot for the next run of the
+	// event loop. We need to have this executed immediately or else it will
+	// be dismissed since the session object will be deleted by the time we
+	// leave this method and the event loop gets a chance to run again.
+	session->stop_capture();
+	QApplication::processEvents();
 
 	for (shared_ptr<views::ViewBase> view : session->views())
 		remove_view(view);
@@ -311,6 +301,7 @@ void MainWindow::remove_session(shared_ptr<Session> session)
 	if (last_focused_session_ == session)
 		last_focused_session_.reset();
 
+	// Remove the session from our list of sessions (which also destroys it)
 	sessions_.remove_if([&](shared_ptr<Session> s) {
 		return s == session; });
 
@@ -331,99 +322,47 @@ void MainWindow::remove_session(shared_ptr<Session> session)
 	}
 }
 
-void MainWindow::setup_ui()
+void MainWindow::add_session_with_file(string open_file_name,
+	string open_file_format)
 {
-	setObjectName(QString::fromUtf8("MainWindow"));
-
-	setCentralWidget(&session_selector_);
-
-	// Set the window icon
-	QIcon icon;
-	icon.addFile(QString(":/icons/sigrok-logo-notext.png"));
-	setWindowIcon(icon);
-
-	action_view_sticky_scrolling_->setCheckable(true);
-	action_view_sticky_scrolling_->setChecked(true);
-	action_view_sticky_scrolling_->setShortcut(QKeySequence(Qt::Key_S));
-	action_view_sticky_scrolling_->setObjectName(
-		QString::fromUtf8("actionViewStickyScrolling"));
-	action_view_sticky_scrolling_->setText(tr("&Sticky Scrolling"));
-
-	action_view_coloured_bg_->setCheckable(true);
-	action_view_coloured_bg_->setChecked(true);
-	action_view_coloured_bg_->setShortcut(QKeySequence(Qt::Key_B));
-	action_view_coloured_bg_->setObjectName(
-		QString::fromUtf8("actionViewColouredBg"));
-	action_view_coloured_bg_->setText(tr("Use &Coloured Backgrounds"));
-
-	action_about_->setObjectName(QString::fromUtf8("actionAbout"));
-	action_about_->setToolTip(tr("&About..."));
-
-	// Set up the tab area
-	new_session_button_ = new QToolButton();
-	new_session_button_->setIcon(QIcon::fromTheme("document-new",
-		QIcon(":/icons/document-new.png")));
-	new_session_button_->setToolTip(tr("Create New Session"));
-	new_session_button_->setAutoRaise(true);
-
-	run_stop_button_ = new QToolButton();
-	run_stop_button_->setAutoRaise(true);
-	run_stop_button_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-	run_stop_button_->setShortcut(QKeySequence(Qt::Key_Space));
-	run_stop_button_->setToolTip(tr("Start/Stop Acquisition"));
-
-	settings_button_ = new QToolButton();
-	settings_button_->setIcon(QIcon::fromTheme("configure",
-		QIcon(":/icons/configure.png")));
-	settings_button_->setToolTip(tr("Settings"));
-	settings_button_->setAutoRaise(true);
-
-	QFrame *separator1 = new QFrame();
-	separator1->setFrameStyle(QFrame::VLine | QFrame::Raised);
-	QFrame *separator2 = new QFrame();
-	separator2->setFrameStyle(QFrame::VLine | QFrame::Raised);
-
-	QHBoxLayout* layout = new QHBoxLayout();
-	layout->setContentsMargins(2, 2, 2, 2);
-	layout->addWidget(new_session_button_);
-	layout->addWidget(separator1);
-	layout->addWidget(run_stop_button_);
-	layout->addWidget(separator2);
-	layout->addWidget(settings_button_);
-
-	static_tab_widget_ = new QWidget();
-	static_tab_widget_->setLayout(layout);
-
-	session_selector_.setCornerWidget(static_tab_widget_, Qt::TopLeftCorner);
-	session_selector_.setTabsClosable(true);
-
-	connect(new_session_button_, SIGNAL(clicked(bool)),
-		this, SLOT(on_new_session_clicked()));
-	connect(run_stop_button_, SIGNAL(clicked(bool)),
-		this, SLOT(on_run_stop_clicked()));
-	connect(&session_state_mapper_, SIGNAL(mapped(QObject*)),
-		this, SLOT(on_capture_state_changed(QObject*)));
-
-	connect(&session_selector_, SIGNAL(tabCloseRequested(int)),
-		this, SLOT(on_tab_close_requested(int)));
-	connect(&session_selector_, SIGNAL(currentChanged(int)),
-		this, SLOT(on_tab_changed(int)));
-
-
-	connect(static_cast<QApplication *>(QCoreApplication::instance()),
-		SIGNAL(focusChanged(QWidget*, QWidget*)),
-		this, SLOT(on_focus_changed()));
+	shared_ptr<Session> session = add_session();
+	session->load_init_file(open_file_name, open_file_format);
 }
 
-void MainWindow::save_ui_settings()
+void MainWindow::add_default_session()
+{
+	// Only add the default session if there would be no session otherwise
+	if (sessions_.size() > 0)
+		return;
+
+	shared_ptr<Session> session = add_session();
+
+	// Check the list of available devices. Prefer the one that was
+	// found with user supplied scan specs (if applicable). Then try
+	// one of the auto detected devices that are not the demo device.
+	// Pick demo in the absence of "genuine" hardware devices.
+	shared_ptr<devices::HardwareDevice> user_device, other_device, demo_device;
+	for (shared_ptr<devices::HardwareDevice> dev : device_manager_.devices()) {
+		if (dev == device_manager_.user_spec_device()) {
+			user_device = dev;
+		} else if (dev->hardware_device()->driver()->name() == "demo") {
+			demo_device = dev;
+		} else {
+			other_device = dev;
+		}
+	}
+	if (user_device)
+		session->select_device(user_device);
+	else if (other_device)
+		session->select_device(other_device);
+	else
+		session->select_device(demo_device);
+}
+
+void MainWindow::save_sessions()
 {
 	QSettings settings;
 	int id = 0;
-
-	settings.beginGroup("MainWindow");
-	settings.setValue("state", saveState());
-	settings.setValue("geometry", saveGeometry());
-	settings.endGroup();
 
 	for (shared_ptr<Session> session : sessions_) {
 		// Ignore sessions using the demo device or no device at all
@@ -446,20 +385,10 @@ void MainWindow::save_ui_settings()
 	settings.setValue("sessions", id);
 }
 
-void MainWindow::restore_ui_settings()
+void MainWindow::restore_sessions()
 {
 	QSettings settings;
 	int i, session_count;
-
-	settings.beginGroup("MainWindow");
-
-	if (settings.contains("geometry")) {
-		restoreGeometry(settings.value("geometry").toByteArray());
-		restoreState(settings.value("state").toByteArray());
-	} else
-		resize(1000, 720);
-
-	settings.endGroup();
 
 	session_count = settings.value("sessions", 0).toInt();
 
@@ -471,7 +400,120 @@ void MainWindow::restore_ui_settings()
 	}
 }
 
-std::shared_ptr<Session> MainWindow::get_tab_session(int index) const
+void MainWindow::setup_ui()
+{
+	setObjectName(QString::fromUtf8("MainWindow"));
+
+	setCentralWidget(&session_selector_);
+
+	// Set the window icon
+	QIcon icon;
+	icon.addFile(QString(":/icons/pulseview.png"));
+	setWindowIcon(icon);
+
+	view_sticky_scrolling_shortcut_ = new QShortcut(QKeySequence(Qt::Key_S), this, SLOT(on_view_sticky_scrolling_shortcut()));
+	view_sticky_scrolling_shortcut_->setAutoRepeat(false);
+
+	view_show_sampling_points_shortcut_ = new QShortcut(QKeySequence(Qt::Key_Period), this, SLOT(on_view_show_sampling_points_shortcut()));
+	view_show_sampling_points_shortcut_->setAutoRepeat(false);
+
+	view_show_analog_minor_grid_shortcut_ = new QShortcut(QKeySequence(Qt::Key_G), this, SLOT(on_view_show_analog_minor_grid_shortcut()));
+	view_show_analog_minor_grid_shortcut_->setAutoRepeat(false);
+
+	view_coloured_bg_shortcut_ = new QShortcut(QKeySequence(Qt::Key_B), this, SLOT(on_view_coloured_bg_shortcut()));
+	view_coloured_bg_shortcut_->setAutoRepeat(false);
+
+	// Set up the tab area
+	new_session_button_ = new QToolButton();
+	new_session_button_->setIcon(QIcon::fromTheme("document-new",
+		QIcon(":/icons/document-new.png")));
+	new_session_button_->setToolTip(tr("Create New Session"));
+	new_session_button_->setAutoRaise(true);
+
+	run_stop_button_ = new QToolButton();
+	run_stop_button_->setAutoRaise(true);
+	run_stop_button_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+	run_stop_button_->setToolTip(tr("Start/Stop Acquisition"));
+
+	run_stop_shortcut_ = new QShortcut(QKeySequence(Qt::Key_Space), run_stop_button_, SLOT(click()));
+	run_stop_shortcut_->setAutoRepeat(false);
+
+	settings_button_ = new QToolButton();
+	settings_button_->setIcon(QIcon::fromTheme("preferences-system",
+		QIcon(":/icons/preferences-system.png")));
+	settings_button_->setToolTip(tr("Settings"));
+	settings_button_->setAutoRaise(true);
+
+	QFrame *separator1 = new QFrame();
+	separator1->setFrameStyle(QFrame::VLine | QFrame::Raised);
+	QFrame *separator2 = new QFrame();
+	separator2->setFrameStyle(QFrame::VLine | QFrame::Raised);
+
+	QHBoxLayout* layout = new QHBoxLayout();
+	layout->setContentsMargins(2, 2, 2, 2);
+	layout->addWidget(new_session_button_);
+	layout->addWidget(separator1);
+	layout->addWidget(run_stop_button_);
+	layout->addWidget(separator2);
+	layout->addWidget(settings_button_);
+
+	static_tab_widget_ = new QWidget();
+	static_tab_widget_->setLayout(layout);
+
+	session_selector_.setCornerWidget(static_tab_widget_, Qt::TopLeftCorner);
+	session_selector_.setTabsClosable(true);
+
+	close_application_shortcut_ = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_Q), this, SLOT(close()));
+	close_application_shortcut_->setAutoRepeat(false);
+
+	close_current_tab_shortcut_ = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_W), this, SLOT(on_close_current_tab()));
+
+	connect(new_session_button_, SIGNAL(clicked(bool)),
+		this, SLOT(on_new_session_clicked()));
+	connect(run_stop_button_, SIGNAL(clicked(bool)),
+		this, SLOT(on_run_stop_clicked()));
+	connect(&session_state_mapper_, SIGNAL(mapped(QObject*)),
+		this, SLOT(on_capture_state_changed(QObject*)));
+	connect(settings_button_, SIGNAL(clicked(bool)),
+		this, SLOT(on_settings_clicked()));
+
+	connect(&session_selector_, SIGNAL(tabCloseRequested(int)),
+		this, SLOT(on_tab_close_requested(int)));
+	connect(&session_selector_, SIGNAL(currentChanged(int)),
+		this, SLOT(on_tab_changed(int)));
+
+
+	connect(static_cast<QApplication *>(QCoreApplication::instance()),
+		SIGNAL(focusChanged(QWidget*, QWidget*)),
+		this, SLOT(on_focus_changed()));
+}
+
+void MainWindow::save_ui_settings()
+{
+	QSettings settings;
+
+	settings.beginGroup("MainWindow");
+	settings.setValue("state", saveState());
+	settings.setValue("geometry", saveGeometry());
+	settings.endGroup();
+}
+
+void MainWindow::restore_ui_settings()
+{
+	QSettings settings;
+
+	settings.beginGroup("MainWindow");
+
+	if (settings.contains("geometry")) {
+		restoreGeometry(settings.value("geometry").toByteArray());
+		restoreState(settings.value("state").toByteArray());
+	} else
+		resize(1000, 720);
+
+	settings.endGroup();
+}
+
+shared_ptr<Session> MainWindow::get_tab_session(int index) const
 {
 	// Find the session that belongs to the tab's main window
 	for (auto entry : session_windows_)
@@ -495,6 +537,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
 		event->ignore();
 	} else {
 		save_ui_settings();
+		save_sessions();
 		event->accept();
 	}
 }
@@ -536,7 +579,7 @@ void MainWindow::on_add_view(const QString &title, views::ViewType type,
 	Session *session)
 {
 	// We get a pointer and need a reference
-	for (std::shared_ptr<Session> s : sessions_)
+	for (shared_ptr<Session> s : sessions_)
 		if (s.get() == session)
 			add_view(title, type, *s);
 }
@@ -602,6 +645,12 @@ void MainWindow::on_run_stop_clicked()
 	}
 }
 
+void MainWindow::on_settings_clicked()
+{
+	dialogs::Settings dlg(device_manager_);
+	dlg.exec();
+}
+
 void MainWindow::on_session_name_changed()
 {
 	// Update the corresponding dock widget's name(s)
@@ -650,7 +699,7 @@ void MainWindow::on_capture_state_changed(QObject *obj)
 void MainWindow::on_new_view(Session *session)
 {
 	// We get a pointer and need a reference
-	for (std::shared_ptr<Session> s : sessions_)
+	for (shared_ptr<Session> s : sessions_)
 		if (s.get() == session)
 			add_view(session->name(), views::ViewTypeTrace, *s);
 }
@@ -659,7 +708,7 @@ void MainWindow::on_view_close_clicked()
 {
 	// Find the dock widget that contains the close button that was clicked
 	QObject *w = QObject::sender();
-	QDockWidget *dock = 0;
+	QDockWidget *dock = nullptr;
 
 	while (w) {
 	    dock = qobject_cast<QDockWidget*>(w);
@@ -706,7 +755,8 @@ void MainWindow::on_tab_close_requested(int index)
 {
 	shared_ptr<Session> session = get_tab_session(index);
 
-	assert(session);
+	if (!session)
+		return;
 
 	if (session->data_saved() || (QMessageBox::question(this, tr("Confirmation"),
 		tr("This session contains unsaved data. Close it anyway?"),
@@ -714,28 +764,88 @@ void MainWindow::on_tab_close_requested(int index)
 		remove_session(session);
 }
 
-void MainWindow::on_actionViewStickyScrolling_triggered()
+void MainWindow::on_view_coloured_bg_shortcut()
 {
-	shared_ptr<views::ViewBase> viewbase = get_active_view();
-	views::TraceView::View* view =
-		qobject_cast<views::TraceView::View*>(viewbase.get());
-	if (view)
-		view->enable_sticky_scrolling(action_view_sticky_scrolling_->isChecked());
+	GlobalSettings settings;
+
+	bool state = settings.value(GlobalSettings::Key_View_ColouredBG).toBool();
+	settings.setValue(GlobalSettings::Key_View_ColouredBG, !state);
 }
 
-void MainWindow::on_actionViewColouredBg_triggered()
+void MainWindow::on_view_sticky_scrolling_shortcut()
 {
-	shared_ptr<views::ViewBase> viewbase = get_active_view();
-	views::TraceView::View* view =
-			qobject_cast<views::TraceView::View*>(viewbase.get());
-	if (view)
-		view->enable_coloured_bg(action_view_coloured_bg_->isChecked());
+	GlobalSettings settings;
+
+	bool state = settings.value(GlobalSettings::Key_View_StickyScrolling).toBool();
+	settings.setValue(GlobalSettings::Key_View_StickyScrolling, !state);
 }
 
-void MainWindow::on_actionAbout_triggered()
+void MainWindow::on_view_show_sampling_points_shortcut()
 {
-	dialogs::About dlg(device_manager_.context(), this);
-	dlg.exec();
+	GlobalSettings settings;
+
+	bool state = settings.value(GlobalSettings::Key_View_ShowSamplingPoints).toBool();
+	settings.setValue(GlobalSettings::Key_View_ShowSamplingPoints, !state);
+}
+
+void MainWindow::on_view_show_analog_minor_grid_shortcut()
+{
+	GlobalSettings settings;
+
+	bool state = settings.value(GlobalSettings::Key_View_ShowAnalogMinorGrid).toBool();
+	settings.setValue(GlobalSettings::Key_View_ShowAnalogMinorGrid, !state);
+}
+
+void MainWindow::on_settingViewColouredBg_changed(const QVariant new_value)
+{
+	bool state = new_value.toBool();
+
+	for (auto entry : view_docks_) {
+		shared_ptr<views::ViewBase> viewbase = entry.second;
+
+		// Only trace views have this setting
+		views::trace::View* view =
+				qobject_cast<views::trace::View*>(viewbase.get());
+		if (view)
+			view->enable_coloured_bg(state);
+	}
+}
+
+void MainWindow::on_settingViewShowSamplingPoints_changed(const QVariant new_value)
+{
+	bool state = new_value.toBool();
+
+	for (auto entry : view_docks_) {
+		shared_ptr<views::ViewBase> viewbase = entry.second;
+
+		// Only trace views have this setting
+		views::trace::View* view =
+				qobject_cast<views::trace::View*>(viewbase.get());
+		if (view)
+			view->enable_show_sampling_points(state);
+	}
+}
+
+void MainWindow::on_settingViewShowAnalogMinorGrid_changed(const QVariant new_value)
+{
+	bool state = new_value.toBool();
+
+	for (auto entry : view_docks_) {
+		shared_ptr<views::ViewBase> viewbase = entry.second;
+
+		// Only trace views have this setting
+		views::trace::View* view =
+				qobject_cast<views::trace::View*>(viewbase.get());
+		if (view)
+			view->enable_show_analog_minor_grid(state);
+	}
+}
+
+void MainWindow::on_close_current_tab()
+{
+	int tab = session_selector_.currentIndex();
+
+	on_tab_close_requested(tab);
 }
 
 } // namespace pv

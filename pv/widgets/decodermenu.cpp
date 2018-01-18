@@ -65,8 +65,8 @@ void DecoderMenu::on_action(QObject *action)
 		(srd_decoder*)((QAction*)action)->data().value<void*>();
 	assert(dec);
 
-	decoder_selected(dec);	
+	decoder_selected(dec);
 }
 
-} // widgets
-} // pv
+}  // namespace widgets
+}  // namespace pv

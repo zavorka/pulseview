@@ -27,8 +27,11 @@ G_GNUC_BEGIN_IGNORE_DEPRECATIONS
 G_GNUC_END_IGNORE_DEPRECATIONS
 
 #include <functional>
+
 #include <QString>
 #include <QWidget>
+
+using std::function;
 
 class QWidget;
 
@@ -40,14 +43,15 @@ class Property : public QObject
 	Q_OBJECT;
 
 public:
-	typedef std::function<Glib::VariantBase ()> Getter;
-	typedef std::function<void (Glib::VariantBase)> Setter;
+	typedef function<Glib::VariantBase ()> Getter;
+	typedef function<void (Glib::VariantBase)> Setter;
 
 protected:
-	Property(QString name, Getter getter, Setter setter);
+	Property(QString name, QString desc, Getter getter, Setter setter);
 
 public:
 	const QString& name() const;
+	const QString& desc() const;
 
 	virtual QWidget* get_widget(QWidget *parent,
 		bool auto_commit = false) = 0;
@@ -61,9 +65,10 @@ protected:
 
 private:
 	QString name_;
+	QString desc_;
 };
 
-} // prop
-} // pv
+}  // namespace prop
+}  // namespace pv
 
 #endif // PULSEVIEW_PV_PROP_PROPERTY_HPP

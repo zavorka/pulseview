@@ -17,7 +17,7 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <assert.h>
+#include <cassert>
 
 #include <QCheckBox>
 
@@ -26,8 +26,8 @@
 namespace pv {
 namespace prop {
 
-Bool::Bool(QString name, Getter getter, Setter setter) :
-	Property(name, getter, setter),
+Bool::Bool(QString name, QString desc, Getter getter, Setter setter) :
+	Property(name, desc, getter, setter),
 	check_box_(nullptr)
 {
 }
@@ -48,6 +48,7 @@ QWidget* Bool::get_widget(QWidget *parent, bool auto_commit)
 		variant).get();
 
 	check_box_ = new QCheckBox(name(), parent);
+	check_box_->setToolTip(desc());
 	check_box_->setCheckState(value ? Qt::Checked : Qt::Unchecked);
 
 	if (auto_commit)
@@ -78,5 +79,5 @@ void Bool::on_state_changed(int)
 	commit();
 }
 
-} // prop
-} // pv
+}  // namespace prop
+}  // namespace pv

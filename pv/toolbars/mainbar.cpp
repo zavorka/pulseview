@@ -35,6 +35,7 @@
 
 #include <boost/algorithm/string/join.hpp>
 
+#include <pv/data/decodesignal.hpp>
 #include <pv/devicemanager.hpp>
 #include <pv/devices/hardwaredevice.hpp>
 #include <pv/devices/inputfile.hpp>
@@ -43,10 +44,10 @@
 #include <pv/dialogs/inputoutputoptions.hpp>
 #include <pv/dialogs/storeprogress.hpp>
 #include <pv/mainwindow.hpp>
-#include <pv/popups/deviceoptions.hpp>
 #include <pv/popups/channels.hpp>
+#include <pv/popups/deviceoptions.hpp>
 #include <pv/util.hpp>
-#include <pv/view/view.hpp>
+#include <pv/views/trace/view.hpp>
 #include <pv/widgets/exportmenu.hpp>
 #include <pv/widgets/importmenu.hpp>
 #ifdef ENABLE_DECODE
@@ -56,13 +57,14 @@
 #include <libsigrokcxx/libsigrokcxx.hpp>
 
 using std::back_inserter;
-using std::cerr;
 using std::copy;
-using std::endl;
 using std::list;
+using std::make_pair;
 using std::map;
 using std::max;
 using std::min;
+using std::pair;
+using std::set;
 using std::shared_ptr;
 using std::string;
 using std::vector;
@@ -86,7 +88,7 @@ const char *MainBar::SettingOpenDirectory = "MainWindow/OpenDirectory";
 const char *MainBar::SettingSaveDirectory = "MainWindow/SaveDirectory";
 
 MainBar::MainBar(Session &session, QWidget *parent,
-		pv::views::TraceView::View *view) :
+		pv::views::trace::View *view) :
 	StandardBar(session, parent, view, false),
 	action_new_view_(new QAction(this)),
 	action_open_(new QAction(this)),
@@ -112,6 +114,8 @@ MainBar::MainBar(Session &session, QWidget *parent,
 #endif
 {
 	setObjectName(QString::fromUtf8("MainBar"));
+
+	setContextMenuPolicy(Qt::PreventContextMenu);
 
 	// Actions
 	action_new_view_->setText(tr("New &View"));
@@ -145,15 +149,15 @@ MainBar::MainBar(Session &session, QWidget *parent,
 		session.device_manager().context());
 	menu_file_export->setTitle(tr("&Export"));
 	connect(menu_file_export,
-		SIGNAL(format_selected(std::shared_ptr<sigrok::OutputFormat>)),
-		this, SLOT(export_file(std::shared_ptr<sigrok::OutputFormat>)));
+		SIGNAL(format_selected(shared_ptr<sigrok::OutputFormat>)),
+		this, SLOT(export_file(shared_ptr<sigrok::OutputFormat>)));
 
 	widgets::ImportMenu *menu_file_import = new widgets::ImportMenu(this,
 		session.device_manager().context());
 	menu_file_import->setTitle(tr("&Import"));
 	connect(menu_file_import,
-		SIGNAL(format_selected(std::shared_ptr<sigrok::InputFormat>)),
-		this, SLOT(import_file(std::shared_ptr<sigrok::InputFormat>)));
+		SIGNAL(format_selected(shared_ptr<sigrok::InputFormat>)),
+		this, SLOT(import_file(shared_ptr<sigrok::InputFormat>)));
 
 	action_connect_->setText(tr("&Connect to Device..."));
 	connect(action_connect_, SIGNAL(triggered(bool)),
@@ -163,9 +167,9 @@ MainBar::MainBar(Session &session, QWidget *parent,
 	widgets::ImportMenu *import_menu = new widgets::ImportMenu(this,
 		session.device_manager().context(), action_open_);
 	connect(import_menu,
-		SIGNAL(format_selected(std::shared_ptr<sigrok::InputFormat>)),
+		SIGNAL(format_selected(shared_ptr<sigrok::InputFormat>)),
 		this,
-		SLOT(import_file(std::shared_ptr<sigrok::InputFormat>)));
+		SLOT(import_file(shared_ptr<sigrok::InputFormat>)));
 
 	open_button_->setMenu(import_menu);
 	open_button_->setDefaultAction(action_open_);
@@ -180,9 +184,9 @@ MainBar::MainBar(Session &session, QWidget *parent,
 		session.device_manager().context(),
 		open_actions);
 	connect(export_menu,
-		SIGNAL(format_selected(std::shared_ptr<sigrok::OutputFormat>)),
+		SIGNAL(format_selected(shared_ptr<sigrok::OutputFormat>)),
 		this,
-		SLOT(export_file(std::shared_ptr<sigrok::OutputFormat>)));
+		SLOT(export_file(shared_ptr<sigrok::OutputFormat>)));
 
 	save_button_->setMenu(export_menu);
 	save_button_->setDefaultAction(action_save_as_);
@@ -198,10 +202,10 @@ MainBar::MainBar(Session &session, QWidget *parent,
 	connect(menu_decoders_add_, SIGNAL(decoder_selected(srd_decoder*)),
 		this, SLOT(add_decoder(srd_decoder*)));
 
-	add_decoder_button_->setIcon(QIcon::fromTheme("add-decoder",
-		QIcon(":/icons/add-decoder.svg")));
+	add_decoder_button_->setIcon(QIcon(":/icons/add-decoder.svg"));
 	add_decoder_button_->setPopupMode(QToolButton::InstantPopup);
 	add_decoder_button_->setMenu(menu_decoders_add_);
+	add_decoder_button_->setToolTip(tr("Add low-level, non-stacked protocol decoder"));
 #endif
 
 	connect(&sample_count_, SIGNAL(value_changed()),
@@ -214,12 +218,11 @@ MainBar::MainBar(Session &session, QWidget *parent,
 	set_capture_state(pv::Session::Stopped);
 
 	configure_button_.setToolTip(tr("Configure Device"));
-	configure_button_.setIcon(QIcon::fromTheme("configure",
-		QIcon(":/icons/configure.png")));
+	configure_button_.setIcon(QIcon::fromTheme("preferences-system",
+		QIcon(":/icons/preferences-system.png")));
 
 	channels_button_.setToolTip(tr("Configure Channels"));
-	channels_button_.setIcon(QIcon::fromTheme("channels",
-		QIcon(":/icons/channels.svg")));
+	channels_button_.setIcon(QIcon(":/icons/channels.svg"));
 
 	add_toolbar_widgets();
 
@@ -249,7 +252,6 @@ void MainBar::update_device_list()
 	device_selector_.set_device_list(devs, selected_device);
 	update_device_config_widgets();
 }
-
 
 void MainBar::set_capture_state(pv::Session::capture_state state)
 {
@@ -293,7 +295,7 @@ void MainBar::update_sample_rate_selector()
 	GVariant *gvar_list;
 	const uint64_t *elements = nullptr;
 	gsize num_elements;
-	map< const ConfigKey*, std::set<Capability> > keys;
+	map< const ConfigKey*, set<Capability> > keys;
 
 	if (updating_sample_rate_) {
 		sample_rate_.show_none();
@@ -403,9 +405,12 @@ void MainBar::update_sample_count_selector()
 	uint64_t sample_count = sample_count_.value();
 	uint64_t min_sample_count = 0;
 	uint64_t max_sample_count = MaxSampleCount;
+	bool default_count_set = false;
 
-	if (sample_count == 0)
+	if (sample_count == 0) {
 		sample_count = DefaultSampleCount;
+		default_count_set = true;
+	}
 
 	if (sr_dev->config_check(ConfigKey::LIMIT_SAMPLES, Capability::LIST)) {
 		auto gvar = sr_dev->config_list(ConfigKey::LIMIT_SAMPLES);
@@ -417,14 +422,15 @@ void MainBar::update_sample_count_selector()
 	min_sample_count = min(max(min_sample_count, MinSampleCount),
 		max_sample_count);
 
-	sample_count_.show_125_list(
-		min_sample_count, max_sample_count);
+	sample_count_.show_125_list(min_sample_count, max_sample_count);
 
 	if (sr_dev->config_check(ConfigKey::LIMIT_SAMPLES, Capability::GET)) {
 		auto gvar = sr_dev->config_get(ConfigKey::LIMIT_SAMPLES);
 		sample_count = g_variant_get_uint64(gvar.gobj());
-		if (sample_count == 0)
+		if (sample_count == 0) {
 			sample_count = DefaultSampleCount;
+			default_count_set = true;
+		}
 		sample_count = min(max(sample_count, MinSampleCount),
 			max_sample_count);
 	}
@@ -432,6 +438,10 @@ void MainBar::update_sample_count_selector()
 	sample_count_.set_value(sample_count);
 
 	updating_sample_count_ = false;
+
+	// If we show the default rate then make sure the device uses the same
+	if (default_count_set)
+		commit_sample_count();
 }
 
 void MainBar::update_device_config_widgets()
@@ -469,12 +479,6 @@ void MainBar::update_device_config_widgets()
 
 	if (sr_dev->config_check(ConfigKey::LIMIT_SAMPLES, Capability::SET))
 		sample_count_supported_ = true;
-
-	if (sr_dev->config_check(ConfigKey::LIMIT_FRAMES, Capability::SET)) {
-		sr_dev->config_set(ConfigKey::LIMIT_FRAMES,
-			Glib::Variant<guint64>::create(1));
-			on_config_changed();
-	}
 
 	// Add notification of reconfigure events
 	disconnect(this, SLOT(on_config_changed()));
@@ -566,14 +570,15 @@ void MainBar::add_decoder(srd_decoder *decoder)
 {
 #ifdef ENABLE_DECODE
 	assert(decoder);
-	session_.add_decoder(decoder);
+	shared_ptr<data::DecodeSignal> signal = session_.add_decode_signal();
+	if (signal)
+		signal->stack_decoder(decoder);
 #else
 	(void)decoder;
 #endif
 }
 
-void MainBar::export_file(shared_ptr<OutputFormat> format,
-	bool selection_only)
+void MainBar::export_file(shared_ptr<OutputFormat> format, bool selection_only)
 {
 	using pv::dialogs::StoreProgress;
 
@@ -583,17 +588,17 @@ void MainBar::export_file(shared_ptr<OutputFormat> format,
 	QSettings settings;
 	const QString dir = settings.value(SettingSaveDirectory).toString();
 
-	std::pair<uint64_t, uint64_t> sample_range;
+	pair<uint64_t, uint64_t> sample_range;
 
 	// Selection only? Verify that the cursors are active and fetch their values
 	if (selection_only) {
-		views::TraceView::View *trace_view =
-			qobject_cast<views::TraceView::View*>(session_.main_view().get());
+		views::trace::View *trace_view =
+			qobject_cast<views::trace::View*>(session_.main_view().get());
 
 		if (!trace_view->cursors()->enabled()) {
 			show_session_error(tr("Missing Cursors"), tr("You need to set the " \
 					"cursors before you can save the data enclosed by them " \
-					"to a session file (e.g. using ALT-V - Show Cursors)."));
+					"to a session file (e.g. using the Show Cursors button)."));
 			return;
 		}
 
@@ -602,13 +607,14 @@ void MainBar::export_file(shared_ptr<OutputFormat> format,
 		const pv::util::Timestamp& start_time = trace_view->cursors()->first()->time();
 		const pv::util::Timestamp& end_time = trace_view->cursors()->second()->time();
 
-		const uint64_t start_sample =
-			std::max((double)0, start_time.convert_to<double>() * samplerate);
-		const uint64_t end_sample = end_time.convert_to<double>() * samplerate;
+		const uint64_t start_sample = (uint64_t)max(
+			(double)0, start_time.convert_to<double>() * samplerate);
+		const uint64_t end_sample = (uint64_t)max(
+			(double)0, end_time.convert_to<double>() * samplerate);
 
-		sample_range = std::make_pair(start_sample, end_sample);
+		sample_range = make_pair(start_sample, end_sample);
 	} else {
-		sample_range = std::make_pair(0, 0);
+		sample_range = make_pair(0, 0);
 	}
 
 	// Construct the filter
@@ -617,9 +623,9 @@ void MainBar::export_file(shared_ptr<OutputFormat> format,
 		QString::fromStdString(format->description()));
 
 	if (exts.empty())
-		filter += "(*.*)";
+		filter += "(*)";
 	else
-		filter += QString("(*.%1);;%2 (*.*)").arg(
+		filter += QString("(*.%1);;%2 (*)").arg(
 			QString::fromStdString(join(exts, ", *.")),
 			tr("All Files"));
 
@@ -670,7 +676,7 @@ void MainBar::import_file(shared_ptr<InputFormat> format)
 	// Show the file dialog
 	const QString file_name = QFileDialog::getOpenFileName(
 		this, tr("Import File"), dir, tr(
-			"%1 files (*.*);;All Files (*.*)").arg(
+			"%1 files (*);;All Files (*)").arg(
 			QString::fromStdString(format->description())));
 
 	if (file_name.isEmpty())
@@ -731,7 +737,7 @@ void MainBar::on_sample_rate_changed()
 void MainBar::on_config_changed()
 {
 	commit_sample_count();
-	commit_sample_rate();	
+	commit_sample_rate();
 }
 
 void MainBar::on_actionNewView_triggered()
@@ -747,8 +753,8 @@ void MainBar::on_actionOpen_triggered()
 	// Show the dialog
 	const QString file_name = QFileDialog::getOpenFileName(
 		this, tr("Open File"), dir, tr(
-			"Sigrok Sessions (*.sr);;"
-			"All Files (*.*)"));
+			"sigrok Sessions (*.sr);;"
+			"All Files (*)"));
 
 	if (!file_name.isEmpty()) {
 		session_.load_file(file_name);

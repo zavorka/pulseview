@@ -22,7 +22,6 @@
 
 /* Application details */
 #define PV_TITLE "@PV_TITLE@"
-#define PV_DESCRIPTION "@PV_DESCRIPTION@"
 #define PV_BIN_NAME "@PROJECT_NAME@"
 
 /* Pulseview version information */
@@ -34,5 +33,7 @@
 
 /* Platform properties */
 #cmakedefine HAVE_UNALIGNED_LITTLE_ENDIAN_ACCESS
+
+#define PV_GLIBMM_VERSION "@PV_GLIBMM_VERSION@"
 
 #endif

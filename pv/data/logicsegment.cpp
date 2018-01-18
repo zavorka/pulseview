@@ -19,11 +19,12 @@
 
 #include <extdef.h>
 
-#include <assert.h>
-#include <string.h>
-#include <stdlib.h>
+#include <cassert>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 
+#include "logic.hpp"
 #include "logicsegment.hpp"
 
 #include <libsigrokcxx/libsigrokcxx.hpp>
@@ -32,8 +33,8 @@ using std::lock_guard;
 using std::recursive_mutex;
 using std::max;
 using std::min;
-using std::pair;
 using std::shared_ptr;
+using std::vector;
 
 using sigrok::Logic;
 
@@ -43,18 +44,15 @@ namespace data {
 const int LogicSegment::MipMapScalePower = 4;
 const int LogicSegment::MipMapScaleFactor = 1 << MipMapScalePower;
 const float LogicSegment::LogMipMapScaleFactor = logf(MipMapScaleFactor);
-const uint64_t LogicSegment::MipMapDataUnit = 64*1024;	// bytes
+const uint64_t LogicSegment::MipMapDataUnit = 64 * 1024; // bytes
 
-LogicSegment::LogicSegment(shared_ptr<Logic> logic, uint64_t samplerate,
-				const uint64_t expected_num_samples) :
-	Segment(samplerate, logic->unit_size()),
+LogicSegment::LogicSegment(pv::data::Logic& owner, uint32_t segment_id,
+	unsigned int unit_size,	uint64_t samplerate) :
+	Segment(segment_id, samplerate, unit_size),
+	owner_(owner),
 	last_append_sample_(0)
 {
-	set_capacity(expected_num_samples);
-
-	lock_guard<recursive_mutex> lock(mutex_);
 	memset(mip_map_, 0, sizeof(mip_map_));
-	append_payload(logic);
 }
 
 LogicSegment::~LogicSegment()
@@ -138,41 +136,73 @@ void LogicSegment::pack_sample(uint8_t *ptr, uint64_t value)
 #endif
 }
 
-void LogicSegment::append_payload(shared_ptr<Logic> logic)
+void LogicSegment::append_payload(shared_ptr<sigrok::Logic> logic)
 {
 	assert(unit_size_ == logic->unit_size());
 	assert((logic->data_length() % unit_size_) == 0);
 
+	append_payload(logic->data_pointer(), logic->data_length());
+}
+
+void LogicSegment::append_payload(void *data, uint64_t data_size)
+{
+	assert((data_size % unit_size_) == 0);
+
 	lock_guard<recursive_mutex> lock(mutex_);
 
-	append_data(logic->data_pointer(),
-		logic->data_length() / unit_size_);
+	uint64_t prev_sample_count = sample_count_;
+	uint64_t sample_count = data_size / unit_size_;
+
+	append_samples(data, sample_count);
 
 	// Generate the first mip-map from the data
 	append_payload_to_mipmap();
+
+	if (sample_count > 1)
+		owner_.notify_samples_added(this, prev_sample_count + 1,
+			prev_sample_count + 1 + sample_count);
+	else
+		owner_.notify_samples_added(this, prev_sample_count + 1,
+			prev_sample_count + 1);
 }
 
-const uint8_t* LogicSegment::get_samples(int64_t start_sample,
-	int64_t end_sample) const
+void LogicSegment::get_samples(int64_t start_sample,
+	int64_t end_sample,	uint8_t* dest) const
 {
 	assert(start_sample >= 0);
 	assert(start_sample <= (int64_t)sample_count_);
 	assert(end_sample >= 0);
 	assert(end_sample <= (int64_t)sample_count_);
 	assert(start_sample <= end_sample);
+	assert(dest != nullptr);
 
 	lock_guard<recursive_mutex> lock(mutex_);
 
-	uint8_t* data = new uint8_t[end_sample - start_sample];
-	const size_t size = (end_sample - start_sample) * unit_size_;
-	memcpy(data, (uint8_t*)data_.data() + start_sample * unit_size_, size);
-	return data;
+	get_raw_samples(start_sample, (end_sample - start_sample), dest);
+}
+
+SegmentLogicDataIterator* LogicSegment::begin_sample_iteration(uint64_t start)
+{
+	return (SegmentLogicDataIterator*)begin_raw_sample_iteration(start);
+}
+
+void LogicSegment::continue_sample_iteration(SegmentLogicDataIterator* it, uint64_t increase)
+{
+	Segment::continue_raw_sample_iteration((SegmentRawDataIterator*)it, increase);
+}
+
+void LogicSegment::end_sample_iteration(SegmentLogicDataIterator* it)
+{
+	Segment::end_raw_sample_iteration((SegmentRawDataIterator*)it);
 }
 
 void LogicSegment::reallocate_mipmap_level(MipMapLevel &m)
 {
+	lock_guard<recursive_mutex> lock(mutex_);
+
 	const uint64_t new_data_length = ((m.length + MipMapDataUnit - 1) /
 		MipMapDataUnit) * MipMapDataUnit;
+
 	if (new_data_length > m.data_length) {
 		m.data_length = new_data_length;
 
@@ -186,8 +216,8 @@ void LogicSegment::append_payload_to_mipmap()
 {
 	MipMapLevel &m0 = mip_map_[0];
 	uint64_t prev_length;
-	const uint8_t *src_ptr;
 	uint8_t *dest_ptr;
+	SegmentRawDataIterator* it;
 	uint64_t accumulator;
 	unsigned int diff_counter;
 
@@ -204,45 +234,48 @@ void LogicSegment::append_payload_to_mipmap()
 	dest_ptr = (uint8_t*)m0.data + prev_length * unit_size_;
 
 	// Iterate through the samples to populate the first level mipmap
-	const uint8_t *const end_src_ptr = (uint8_t*)data_.data() +
-		m0.length * unit_size_ * MipMapScaleFactor;
-	for (src_ptr = (uint8_t*)data_.data() +
-			prev_length * unit_size_ * MipMapScaleFactor;
-			src_ptr < end_src_ptr;) {
+	uint64_t start_sample = prev_length * MipMapScaleFactor;
+	uint64_t end_sample = m0.length * MipMapScaleFactor;
+
+	it = begin_raw_sample_iteration(start_sample);
+	for (uint64_t i = start_sample; i < end_sample;) {
 		// Accumulate transitions which have occurred in this sample
 		accumulator = 0;
 		diff_counter = MipMapScaleFactor;
 		while (diff_counter-- > 0) {
-			const uint64_t sample = unpack_sample(src_ptr);
+			const uint64_t sample = unpack_sample(it->value);
 			accumulator |= last_append_sample_ ^ sample;
 			last_append_sample_ = sample;
-			src_ptr += unit_size_;
+			continue_raw_sample_iteration(it, 1);
+			i++;
 		}
 
 		pack_sample(dest_ptr, accumulator);
 		dest_ptr += unit_size_;
 	}
+	end_raw_sample_iteration(it);
 
 	// Compute higher level mipmaps
 	for (unsigned int level = 1; level < ScaleStepCount; level++) {
 		MipMapLevel &m = mip_map_[level];
-		const MipMapLevel &ml = mip_map_[level-1];
+		const MipMapLevel &ml = mip_map_[level - 1];
 
 		// Expand the data buffer to fit the new samples
 		prev_length = m.length;
 		m.length = ml.length / MipMapScaleFactor;
 
-		// Break off if there are no more samples to computed
+		// Break off if there are no more samples to be computed
 		if (m.length == prev_length)
 			break;
 
 		reallocate_mipmap_level(m);
 
-		// Subsample the level lower level
-		src_ptr = (uint8_t*)ml.data +
+		// Subsample the lower level
+		const uint8_t* src_ptr = (uint8_t*)ml.data +
 			unit_size_ * prev_length * MipMapScaleFactor;
 		const uint8_t *const end_dest_ptr =
 			(uint8_t*)m.data + unit_size_ * m.length;
+
 		for (dest_ptr = (uint8_t*)m.data +
 				unit_size_ * prev_length;
 				dest_ptr < end_dest_ptr;
@@ -259,15 +292,21 @@ void LogicSegment::append_payload_to_mipmap()
 	}
 }
 
-uint64_t LogicSegment::get_sample(uint64_t index) const
+uint64_t LogicSegment::get_unpacked_sample(uint64_t index) const
 {
 	assert(index < sample_count_);
 
-	return unpack_sample((uint8_t*)data_.data() + index * unit_size_);
+	assert(unit_size_ <= 8);  // 8 * 8 = 64 channels
+	uint8_t data[8];
+
+	get_raw_samples(index, 1, data);
+	uint64_t sample = unpack_sample(data);
+
+	return sample;
 }
 
 void LogicSegment::get_subsampled_edges(
-	std::vector<EdgePair> &edges,
+	vector<EdgePair> &edges,
 	uint64_t start, uint64_t end,
 	float min_length, int sig_index)
 {
@@ -276,7 +315,6 @@ void LogicSegment::get_subsampled_edges(
 	bool last_sample;
 	bool fast_forward;
 
-	assert(end <= get_sample_count());
 	assert(start <= end);
 	assert(min_length > 0);
 	assert(sig_index >= 0);
@@ -284,14 +322,18 @@ void LogicSegment::get_subsampled_edges(
 
 	lock_guard<recursive_mutex> lock(mutex_);
 
+	// Make sure we only process as many samples as we have
+	if (end > get_sample_count())
+		end = get_sample_count();
+
 	const uint64_t block_length = (uint64_t)max(min_length, 1.0f);
 	const unsigned int min_level = max((int)floorf(logf(min_length) /
 		LogMipMapScaleFactor) - 1, 0);
 	const uint64_t sig_mask = 1ULL << sig_index;
 
 	// Store the initial state
-	last_sample = (get_sample(start) & sig_mask) != 0;
-	edges.push_back(pair<int64_t, bool>(index++, last_sample));
+	last_sample = (get_unpacked_sample(start) & sig_mask) != 0;
+	edges.emplace_back(index++, last_sample);
 
 	while (index + block_length <= end) {
 		//----- Continue to search -----//
@@ -311,7 +353,7 @@ void LogicSegment::get_subsampled_edges(
 					(index & ~((uint64_t)(~0) << MipMapScalePower)) != 0;
 					index++) {
 				const bool sample =
-					(get_sample(index) & sig_mask) != 0;
+					(get_unpacked_sample(index) & sig_mask) != 0;
 
 				// If there was a change we cannot fast forward
 				if (sample != last_sample) {
@@ -331,7 +373,7 @@ void LogicSegment::get_subsampled_edges(
 
 			// We can fast forward only if there was no change
 			const bool sample =
-				(get_sample(index) & sig_mask) != 0;
+				(get_unpacked_sample(index) & sig_mask) != 0;
 			if (last_sample != sample)
 				fast_forward = false;
 		}
@@ -345,7 +387,7 @@ void LogicSegment::get_subsampled_edges(
 
 			// Slide right and zoom out at the beginnings of mip-map
 			// blocks until we encounter a change
-			while (1) {
+			while (true) {
 				const int level_scale_power =
 					(level + 1) * MipMapScalePower;
 				const uint64_t offset =
@@ -377,7 +419,7 @@ void LogicSegment::get_subsampled_edges(
 
 			// Zoom in, and slide right until we encounter a change,
 			// and repeat until we reach min_level
-			while (1) {
+			while (true) {
 				assert(mip_map_[level].data);
 
 				const int level_scale_power =
@@ -409,7 +451,7 @@ void LogicSegment::get_subsampled_edges(
 			// block
 			if (min_length < MipMapScaleFactor) {
 				for (; index < end; index++) {
-					const bool sample = (get_sample(index) &
+					const bool sample = (get_unpacked_sample(index) &
 						sig_mask) != 0;
 					if (sample != last_sample)
 						break;
@@ -426,18 +468,18 @@ void LogicSegment::get_subsampled_edges(
 
 		// Store the final state
 		const bool final_sample =
-			(get_sample(final_index - 1) & sig_mask) != 0;
-		edges.push_back(pair<int64_t, bool>(index, final_sample));
+			(get_unpacked_sample(final_index - 1) & sig_mask) != 0;
+		edges.emplace_back(index, final_sample);
 
 		index = final_index;
 		last_sample = final_sample;
 	}
 
 	// Add the final state
-	const bool end_sample = get_sample(end) & sig_mask;
+	const bool end_sample = get_unpacked_sample(end) & sig_mask;
 	if (last_sample != end_sample)
-		edges.push_back(pair<int64_t, bool>(end, end_sample));
-	edges.push_back(pair<int64_t, bool>(end + 1, end_sample));
+		edges.emplace_back(end, end_sample);
+	edges.emplace_back(end + 1, end_sample);
 }
 
 uint64_t LogicSegment::get_subsample(int level, uint64_t offset) const

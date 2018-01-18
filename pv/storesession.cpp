@@ -19,32 +19,20 @@
 
 #include <cassert>
 
-#ifdef _WIN32
-// Windows: Avoid boost/thread namespace pollution (which includes windows.h).
-#define NOGDI
-#define NORESOURCE
-#endif
-#include <boost/thread/locks.hpp>
-#include <boost/thread/shared_mutex.hpp>
-
 #include "storesession.hpp"
 
-#include <pv/devicemanager.hpp>
-#include <pv/session.hpp>
 #include <pv/data/analog.hpp>
 #include <pv/data/analogsegment.hpp>
 #include <pv/data/logic.hpp>
 #include <pv/data/logicsegment.hpp>
 #include <pv/data/signalbase.hpp>
+#include <pv/devicemanager.hpp>
 #include <pv/devices/device.hpp>
+#include <pv/session.hpp>
 
 #include <libsigrokcxx/libsigrokcxx.hpp>
 
-using boost::shared_lock;
-using boost::shared_mutex;
-
 using std::deque;
-using std::dynamic_pointer_cast;
 using std::ios_base;
 using std::lock_guard;
 using std::make_pair;
@@ -52,16 +40,13 @@ using std::map;
 using std::min;
 using std::mutex;
 using std::pair;
-using std::set;
 using std::shared_ptr;
 using std::string;
-using std::thread;
 using std::unordered_set;
 using std::vector;
 
 using Glib::VariantBase;
 
-using sigrok::ChannelType;
 using sigrok::ConfigKey;
 using sigrok::Error;
 using sigrok::OutputFormat;
@@ -69,12 +54,12 @@ using sigrok::OutputFlag;
 
 namespace pv {
 
-const size_t StoreSession::BlockSize = 1024 * 1024;
+const size_t StoreSession::BlockSize = 10 * 1024 * 1024;
 
-StoreSession::StoreSession(const std::string &file_name,
+StoreSession::StoreSession(const string &file_name,
 	const shared_ptr<OutputFormat> &output_format,
 	const map<string, VariantBase> &options,
-	const std::pair<uint64_t, uint64_t> sample_range,
+	const pair<uint64_t, uint64_t> sample_range,
 	const Session &session) :
 	file_name_(file_name),
 	output_format_(output_format),
@@ -116,7 +101,7 @@ bool StoreSession::start()
 		if (!signal->enabled())
 			continue;
 
-		if (signal->type() == ChannelType::LOGIC) {
+		if (signal->type() == data::SignalBase::LogicChannel) {
 			// All logic channels share the same data segments
 			shared_ptr<data::Logic> ldata = signal->logic_data();
 
@@ -132,7 +117,7 @@ bool StoreSession::start()
 			any_segment = lsegment;
 		}
 
-		if (signal->type() == ChannelType::ANALOG) {
+		if (signal->type() == data::SignalBase::AnalogChannel) {
 			// Each analog channel has its own segments
 			shared_ptr<data::Analog> adata = signal->analog_data();
 
@@ -235,18 +220,18 @@ void StoreSession::store_proc(vector< shared_ptr<data::SignalBase> > achannel_li
 	// Qt needs the progress values to fit inside an int. If they would
 	// not, scale the current and max values down until they do.
 	while ((sample_count_ >> progress_scale) > INT_MAX)
-		progress_scale ++;
+		progress_scale++;
 
 	unit_count_ = sample_count_ >> progress_scale;
 
 	const unsigned int samples_per_block =
-		std::min(asamples_per_block, lsamples_per_block);
+		min(asamples_per_block, lsamples_per_block);
 
 	while (!interrupt_ && sample_count_) {
 		progress_updated();
 
 		const uint64_t packet_len =
-			std::min((uint64_t)samples_per_block, sample_count_);
+			min((uint64_t)samples_per_block, sample_count_);
 
 		try {
 			const auto context = session_.device_manager().context();
@@ -255,11 +240,9 @@ void StoreSession::store_proc(vector< shared_ptr<data::SignalBase> > achannel_li
 				shared_ptr<sigrok::Channel> achannel = (achannel_list.at(i))->channel();
 				shared_ptr<data::AnalogSegment> asegment = asegment_list.at(i);
 
-				const float *adata =
-					asegment->get_samples(start_sample_, start_sample_ + packet_len);
+				float *adata = new float[packet_len];
+				asegment->get_samples(start_sample_, start_sample_ + packet_len, adata);
 
-				// The srzip format currently only supports packets with one
-				// analog channel. See zip_append_analog() in srzip.c
 				auto analog = context->create_analog_packet(
 					vector<shared_ptr<sigrok::Channel> >{achannel},
 					(float *)adata, packet_len,
@@ -274,11 +257,11 @@ void StoreSession::store_proc(vector< shared_ptr<data::SignalBase> > achannel_li
 			}
 
 			if (lsegment) {
-				const uint8_t* ldata =
-					lsegment->get_samples(start_sample_, start_sample_ + packet_len);
+				const size_t data_size = packet_len * lunit_size;
+				uint8_t* ldata = new uint8_t[data_size];
+				lsegment->get_samples(start_sample_, start_sample_ + packet_len, ldata);
 
-				const size_t length = packet_len * lunit_size;
-				auto logic = context->create_logic_packet((void*)ldata, length, lunit_size);
+				auto logic = context->create_logic_packet((void*)ldata, data_size, lunit_size);
 				const string ldata_str = output_->receive(logic);
 
 				if (output_stream_.is_open())
@@ -306,4 +289,4 @@ void StoreSession::store_proc(vector< shared_ptr<data::SignalBase> > achannel_li
 	output_stream_.close();
 }
 
-} // pv
+}  // namespace pv

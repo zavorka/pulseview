@@ -17,8 +17,8 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdint.h>
-#include <assert.h>
+#include <cassert>
+#include <cstdint>
 
 #include <QSpinBox>
 
@@ -33,11 +33,12 @@ namespace pv {
 namespace prop {
 
 Int::Int(QString name,
+	QString desc,
 	QString suffix,
 	optional< pair<int64_t, int64_t> > range,
 	Getter getter,
 	Setter setter) :
-	Property(name, getter, setter),
+	Property(name, desc, getter, setter),
 	suffix_(suffix),
 	range_(range),
 	spin_box_(nullptr)
@@ -90,10 +91,10 @@ QWidget* Int::get_widget(QWidget *parent, bool auto_commit)
 		range_min = 0, range_max = UINT64_MAX;
 	} else {
 		// Unexpected value type.
-		assert(0);
+		assert(false);
 	}
 
-	// @todo Sigrok supports 64-bit quantities, but Qt does not have a
+	// @todo sigrok supports 64-bit quantities, but Qt does not have a
 	// standard widget to allow the values to be modified over the full
 	// 64-bit range on 32-bit machines. To solve the issue we need a
 	// custom widget.
@@ -140,10 +141,9 @@ void Int::commit()
 		new_value = g_variant_new_int64(spin_box_->value());
 	else if (g_variant_type_equal(type, G_VARIANT_TYPE_UINT64))
 		new_value = g_variant_new_uint64(spin_box_->value());
-	else
-	{
+	else {
 		// Unexpected value type.
-		assert(0);
+		assert(false);
 	}
 
 	assert(new_value);
@@ -158,5 +158,5 @@ void Int::on_value_changed(int)
 	commit();
 }
 
-} // prop
-} // pv
+}  // namespace prop
+}  // namespace pv

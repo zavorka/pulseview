@@ -17,13 +17,13 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <boost/test/unit_test.hpp>
 #include <boost/test/floating_point_comparison.hpp>
+#include <boost/test/unit_test.hpp>
 
-#include "pv/view/ruler.hpp"
+#include "pv/views/trace/ruler.hpp"
 #include "test/test.hpp"
 
-using namespace pv::views::TraceView;
+using namespace pv::views::trace;
 
 namespace {
 	QString format(const pv::util::Timestamp& t)

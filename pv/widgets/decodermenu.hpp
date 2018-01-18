@@ -38,7 +38,6 @@ public:
 private:
 	static int decoder_name_cmp(const void *a, const void *b);
 
-
 private Q_SLOTS:
 	void on_action(QObject *action);
 
@@ -49,7 +48,7 @@ private:
 	QSignalMapper mapper_;
 };
 
-} // widgets
-} // pv
+}  // namespace widgets
+}  // namespace pv
 
 #endif // PULSEVIEW_PV_WIDGETS_DECODERMENU_HPP

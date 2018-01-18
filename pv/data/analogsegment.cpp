@@ -19,37 +19,41 @@
 
 #include <extdef.h>
 
-#include <assert.h>
-#include <string.h>
-#include <stdlib.h>
+#include <cassert>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <memory>
 
 #include <algorithm>
 
+#include "analog.hpp"
 #include "analogsegment.hpp"
 
 using std::lock_guard;
 using std::recursive_mutex;
+using std::make_pair;
 using std::max;
 using std::max_element;
 using std::min;
 using std::min_element;
+using std::pair;
+using std::unique_ptr;
 
 namespace pv {
 namespace data {
 
 const int AnalogSegment::EnvelopeScalePower = 4;
 const int AnalogSegment::EnvelopeScaleFactor = 1 << EnvelopeScalePower;
-const float AnalogSegment::LogEnvelopeScaleFactor =
-	logf(EnvelopeScaleFactor);
-const uint64_t AnalogSegment::EnvelopeDataUnit = 64*1024;	// bytes
+const float AnalogSegment::LogEnvelopeScaleFactor = logf(EnvelopeScaleFactor);
+const uint64_t AnalogSegment::EnvelopeDataUnit = 64 * 1024;	// bytes
 
-AnalogSegment::AnalogSegment(
-	uint64_t samplerate, const uint64_t expected_num_samples) :
-	Segment(samplerate, sizeof(float))
+AnalogSegment::AnalogSegment(Analog& owner, uint32_t segment_id, uint64_t samplerate) :
+	Segment(segment_id, samplerate, sizeof(float)),
+	owner_(owner),
+	min_value_(0),
+	max_value_(0)
 {
-	set_capacity(expected_num_samples);
-
 	lock_guard<recursive_mutex> lock(mutex_);
 	memset(envelope_levels_, 0, sizeof(envelope_levels_));
 }
@@ -68,37 +72,63 @@ void AnalogSegment::append_interleaved_samples(const float *data,
 
 	lock_guard<recursive_mutex> lock(mutex_);
 
-	// If we're out of memory, this will throw std::bad_alloc
-	data_.resize((sample_count_ + sample_count) * sizeof(float));
+	uint64_t prev_sample_count = sample_count_;
 
-	float *dst = (float*)data_.data() + sample_count_;
-	const float *dst_end = dst + sample_count;
-	while (dst != dst_end) {
-		*dst++ = *data;
+	// Deinterleave the samples and add them
+	unique_ptr<float[]> deint_data(new float[sample_count]);
+	float *deint_data_ptr = deint_data.get();
+	for (uint32_t i = 0; i < sample_count; i++) {
+		*deint_data_ptr = (float)(*data);
+		deint_data_ptr++;
 		data += stride;
 	}
 
-	sample_count_ += sample_count;
+	append_samples(deint_data.get(), sample_count);
 
 	// Generate the first mip-map from the data
 	append_payload_to_envelope_levels();
+
+	if (sample_count > 1)
+		owner_.notify_samples_added(this, prev_sample_count + 1,
+			prev_sample_count + 1 + sample_count);
+	else
+		owner_.notify_samples_added(this, prev_sample_count + 1,
+			prev_sample_count + 1);
 }
 
-const float* AnalogSegment::get_samples(
-	int64_t start_sample, int64_t end_sample) const
+void AnalogSegment::get_samples(int64_t start_sample, int64_t end_sample,
+	float* dest) const
 {
 	assert(start_sample >= 0);
 	assert(start_sample < (int64_t)sample_count_);
 	assert(end_sample >= 0);
-	assert(end_sample < (int64_t)sample_count_);
+	assert(end_sample <= (int64_t)sample_count_);
 	assert(start_sample <= end_sample);
+	assert(dest != nullptr);
 
 	lock_guard<recursive_mutex> lock(mutex_);
 
-	float *const data = new float[end_sample - start_sample];
-	memcpy(data, (float*)data_.data() + start_sample, sizeof(float) *
-		(end_sample - start_sample));
-	return data;
+	get_raw_samples(start_sample, (end_sample - start_sample), (uint8_t*)dest);
+}
+
+const pair<float, float> AnalogSegment::get_min_max() const
+{
+	return make_pair(min_value_, max_value_);
+}
+
+SegmentAnalogDataIterator* AnalogSegment::begin_sample_iteration(uint64_t start)
+{
+	return (SegmentAnalogDataIterator*)begin_raw_sample_iteration(start);
+}
+
+void AnalogSegment::continue_sample_iteration(SegmentAnalogDataIterator* it, uint64_t increase)
+{
+	Segment::continue_raw_sample_iteration((SegmentRawDataIterator*)it, increase);
+}
+
+void AnalogSegment::end_sample_iteration(SegmentAnalogDataIterator* it)
+{
+	Segment::end_raw_sample_iteration((SegmentRawDataIterator*)it);
 }
 
 void AnalogSegment::get_envelope_section(EnvelopeSection &s,
@@ -141,10 +171,26 @@ void AnalogSegment::append_payload_to_envelope_levels()
 	Envelope &e0 = envelope_levels_[0];
 	uint64_t prev_length;
 	EnvelopeSample *dest_ptr;
+	SegmentRawDataIterator* it;
 
 	// Expand the data buffer to fit the new samples
 	prev_length = e0.length;
 	e0.length = sample_count_ / EnvelopeScaleFactor;
+
+	// Calculate min/max values in case we have too few samples for an envelope
+	const float old_min_value = min_value_, old_max_value = max_value_;
+	if (sample_count_ < EnvelopeScaleFactor) {
+		it = begin_raw_sample_iteration(0);
+		for (uint64_t i = 0; i < sample_count_; i++) {
+			const float sample = *((float*)it->value);
+			if (sample < min_value_)
+				min_value_ = sample;
+			if (sample > max_value_)
+				max_value_ = sample;
+			continue_raw_sample_iteration(it, 1);
+		}
+		end_raw_sample_iteration(it);
+	}
 
 	// Break off if there are no new samples to compute
 	if (e0.length == prev_length)
@@ -155,38 +201,48 @@ void AnalogSegment::append_payload_to_envelope_levels()
 	dest_ptr = e0.samples + prev_length;
 
 	// Iterate through the samples to populate the first level mipmap
-	const float *const end_src_ptr = (float*)data_.data() +
-		e0.length * EnvelopeScaleFactor;
-	for (const float *src_ptr = (float*)data_.data() +
-			prev_length * EnvelopeScaleFactor;
-			src_ptr < end_src_ptr; src_ptr += EnvelopeScaleFactor) {
+	uint64_t start_sample = prev_length * EnvelopeScaleFactor;
+	uint64_t end_sample = e0.length * EnvelopeScaleFactor;
+
+	it = begin_raw_sample_iteration(start_sample);
+	for (uint64_t i = start_sample; i < end_sample; i += EnvelopeScaleFactor) {
+		const float* samples = (float*)it->value;
+
 		const EnvelopeSample sub_sample = {
-			*min_element(src_ptr, src_ptr + EnvelopeScaleFactor),
-			*max_element(src_ptr, src_ptr + EnvelopeScaleFactor),
+			*min_element(samples, samples + EnvelopeScaleFactor),
+			*max_element(samples, samples + EnvelopeScaleFactor),
 		};
 
+		if (sub_sample.min < min_value_)
+			min_value_ = sub_sample.min;
+		if (sub_sample.max > max_value_)
+			max_value_ = sub_sample.max;
+
+		continue_raw_sample_iteration(it, EnvelopeScaleFactor);
 		*dest_ptr++ = sub_sample;
 	}
+	end_raw_sample_iteration(it);
 
 	// Compute higher level mipmaps
 	for (unsigned int level = 1; level < ScaleStepCount; level++) {
 		Envelope &e = envelope_levels_[level];
-		const Envelope &el = envelope_levels_[level-1];
+		const Envelope &el = envelope_levels_[level - 1];
 
 		// Expand the data buffer to fit the new samples
 		prev_length = e.length;
 		e.length = el.length / EnvelopeScaleFactor;
 
-		// Break off if there are no more samples to computed
+		// Break off if there are no more samples to be computed
 		if (e.length == prev_length)
 			break;
 
 		reallocate_envelope(e);
 
-		// Subsample the level lower level
+		// Subsample the lower level
 		const EnvelopeSample *src_ptr =
 			el.samples + prev_length * EnvelopeScaleFactor;
 		const EnvelopeSample *const end_dest_ptr = e.samples + e.length;
+
 		for (dest_ptr = e.samples + prev_length;
 				dest_ptr < end_dest_ptr; dest_ptr++) {
 			const EnvelopeSample *const end_src_ptr =
@@ -194,7 +250,7 @@ void AnalogSegment::append_payload_to_envelope_levels()
 
 			EnvelopeSample sub_sample = *src_ptr++;
 			while (src_ptr < end_src_ptr) {
-				sub_sample.min = min(sub_sample.min, src_ptr->min);
+				sub_sample.min = min(sub_sample.min, src_ptr->min);;
 				sub_sample.max = max(sub_sample.max, src_ptr->max);
 				src_ptr++;
 			}
@@ -202,6 +258,10 @@ void AnalogSegment::append_payload_to_envelope_levels()
 			*dest_ptr = sub_sample;
 		}
 	}
+
+	// Notify if the min or max value changed
+	if ((old_min_value != min_value_) || (old_max_value != max_value_))
+		owner_.min_max_changed(min_value_, max_value_);
 }
 
 } // namespace data

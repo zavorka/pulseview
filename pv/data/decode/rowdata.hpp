@@ -22,7 +22,11 @@
 
 #include <vector>
 
+#include <libsigrokdecode/libsigrokdecode.h>
+
 #include "annotation.hpp"
+
+using std::vector;
 
 namespace pv {
 namespace data {
@@ -31,7 +35,7 @@ namespace decode {
 class RowData
 {
 public:
-	RowData();
+	RowData() = default;
 
 public:
 	uint64_t get_max_sample() const;
@@ -40,17 +44,17 @@ public:
 	 * Extracts sorted annotations between two period into a vector.
 	 */
 	void get_annotation_subset(
-		std::vector<pv::data::decode::Annotation> &dest,
+		vector<pv::data::decode::Annotation> &dest,
 		uint64_t start_sample, uint64_t end_sample) const;
 
-	void push_annotation(const Annotation &a);
+	void emplace_annotation(srd_proto_data *pdata);
 
 private:
-	std::vector<Annotation> annotations_;
+	vector<Annotation> annotations_;
 };
 
-}
-} // data
-} // pv
+}  // namespace decode
+}  // namespace data
+}  // namespace pv
 
 #endif // PULSEVIEW_PV_DATA_DECODE_ROWDATA_HPP

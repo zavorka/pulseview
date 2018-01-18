@@ -31,6 +31,7 @@ using std::map;
 using std::pair;
 using std::string;
 using std::shared_ptr;
+using std::vector;
 
 using sigrok::Context;
 using sigrok::OutputFormat;
@@ -39,7 +40,7 @@ namespace pv {
 namespace widgets {
 
 ExportMenu::ExportMenu(QWidget *parent, shared_ptr<Context> context,
-	std::vector<QAction *>open_actions) :
+	vector<QAction *>open_actions) :
 	QMenu(parent),
 	context_(context),
 	mapper_(this)
@@ -94,5 +95,5 @@ void ExportMenu::on_action(QObject *action)
 	format_selected((*iter).second);
 }
 
-} // widgets
-} // pv
+}  // namespace widgets
+}  // namespace pv

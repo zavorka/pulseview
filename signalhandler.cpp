@@ -19,9 +19,10 @@
 
 #include "signalhandler.hpp"
 
-#include <assert.h>
-#include <signal.h>
-#include <stdlib.h>
+#include <cassert>
+#include <csignal>
+#include <cstdlib>
+
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -70,8 +71,7 @@ void SignalHandler::on_socket_notifier_activated()
 		abort();
 	}
 
-	switch(sig_number)
-	{
+	switch (sig_number) {
 	case SIGINT:
 		Q_EMIT int_received();
 		break;

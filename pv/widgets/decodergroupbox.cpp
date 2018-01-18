@@ -24,12 +24,12 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-#include <assert.h>
+#include <cassert>
 
 namespace pv {
 namespace widgets {
 
-DecoderGroupBox::DecoderGroupBox(QString title, QWidget *parent, bool isDeletable) :
+DecoderGroupBox::DecoderGroupBox(QString title, QString tooltip, QWidget *parent, bool isDeletable) :
 	QWidget(parent),
 	layout_(new QGridLayout),
 	show_hide_button_(QIcon(":/icons/decoder-shown.svg"), QString(), this)
@@ -37,13 +37,15 @@ DecoderGroupBox::DecoderGroupBox(QString title, QWidget *parent, bool isDeletabl
 	layout_->setContentsMargins(0, 0, 0, 0);
 	setLayout(layout_);
 
-	layout_->addWidget(new QLabel(QString("<h3>%1</h3>").arg(title)),
-		0, 0);
+	auto *lbl = new QLabel(QString("<h3>%1</h3>").arg(title));
+	lbl->setToolTip(tooltip);
+	layout_->addWidget(lbl, 0, 0);
 	layout_->setColumnStretch(0, 1);
 
 	QHBoxLayout *const toolbar = new QHBoxLayout;
 	layout_->addLayout(toolbar, 0, 1);
 
+	show_hide_button_.setToolTip(tr("Show/hide this decoder trace"));
 	show_hide_button_.setFlat(true);
 	show_hide_button_.setIconSize(QSize(16, 16));
 	connect(&show_hide_button_, SIGNAL(clicked()),
@@ -53,6 +55,7 @@ DecoderGroupBox::DecoderGroupBox(QString title, QWidget *parent, bool isDeletabl
 	if (isDeletable) {
 		QPushButton *const delete_button = new QPushButton(
 			QIcon(":/icons/decoder-delete.svg"), QString(), this);
+		delete_button->setToolTip(tr("Delete this decoder trace"));
 		delete_button->setFlat(true);
 		delete_button->setIconSize(QSize(16, 16));
 		connect(delete_button, SIGNAL(clicked()),
@@ -74,5 +77,5 @@ void DecoderGroupBox::set_decoder_visible(bool visible)
 		":/icons/decoder-hidden.svg"));
 }
 
-} // widgets
-} // pv
+}  // namespace widgets
+}  // namespace pv

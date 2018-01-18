@@ -25,6 +25,10 @@
 #include <utility>
 #include <vector>
 
+#include <QObject>
+
+using std::pair;
+
 namespace AnalogSegmentTest {
 struct Basic;
 }
@@ -32,8 +36,18 @@ struct Basic;
 namespace pv {
 namespace data {
 
+class Analog;
+
+typedef struct {
+	uint64_t sample_index, chunk_num, chunk_offs;
+	uint8_t* chunk;
+	float* value;
+} SegmentAnalogDataIterator;
+
 class AnalogSegment : public Segment
 {
+	Q_OBJECT
+
 public:
 	struct EnvelopeSample
 	{
@@ -65,15 +79,20 @@ private:
 	static const uint64_t EnvelopeDataUnit;
 
 public:
-	AnalogSegment(uint64_t samplerate, uint64_t expected_num_samples = 0);
+	AnalogSegment(Analog& owner, uint32_t segment_id, uint64_t samplerate);
 
 	virtual ~AnalogSegment();
 
 	void append_interleaved_samples(const float *data,
 		size_t sample_count, size_t stride);
 
-	const float* get_samples(int64_t start_sample,
-		int64_t end_sample) const;
+	void get_samples(int64_t start_sample, int64_t end_sample, float* dest) const;
+
+	const pair<float, float> get_min_max() const;
+
+	SegmentAnalogDataIterator* begin_sample_iteration(uint64_t start);
+	void continue_sample_iteration(SegmentAnalogDataIterator* it, uint64_t increase);
+	void end_sample_iteration(SegmentAnalogDataIterator* it);
 
 	void get_envelope_section(EnvelopeSection &s,
 		uint64_t start, uint64_t end, float min_length) const;
@@ -84,7 +103,11 @@ private:
 	void append_payload_to_envelope_levels();
 
 private:
+	Analog& owner_;
+
 	struct Envelope envelope_levels_[ScaleStepCount];
+
+	float min_value_, max_value_;
 
 	friend struct AnalogSegmentTest::Basic;
 };

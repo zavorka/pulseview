@@ -32,7 +32,7 @@ class Bool : public Property
 	Q_OBJECT;
 
 public:
-	Bool(QString name, Getter getter, Setter setter);
+	Bool(QString name, QString desc, Getter getter, Setter setter);
 
 	virtual ~Bool() = default;
 
@@ -48,7 +48,7 @@ private:
 	QCheckBox *check_box_;
 };
 
-} // prop
-} // pv
+}  // namespace prop
+}  // namespace pv
 
 #endif // PULSEVIEW_PV_PROP_BOOL_HPP

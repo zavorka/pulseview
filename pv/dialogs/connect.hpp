@@ -29,10 +29,12 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLineEdit>
-#include <QSpinBox>
 #include <QListWidget>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QVBoxLayout>
+
+using std::shared_ptr;
 
 namespace sigrok {
 class Driver;
@@ -44,8 +46,8 @@ class HardwareDevice;
 }
 }
 
-Q_DECLARE_METATYPE(std::shared_ptr<sigrok::Driver>);
-Q_DECLARE_METATYPE(std::shared_ptr<pv::devices::HardwareDevice>);
+Q_DECLARE_METATYPE(shared_ptr<sigrok::Driver>);
+Q_DECLARE_METATYPE(shared_ptr<pv::devices::HardwareDevice>);
 
 namespace pv {
 
@@ -60,12 +62,12 @@ class Connect : public QDialog
 public:
 	Connect(QWidget *parent, pv::DeviceManager &device_manager);
 
-	std::shared_ptr<devices::HardwareDevice> get_selected_device() const;
+	shared_ptr<devices::HardwareDevice> get_selected_device() const;
 
 private:
 	void populate_drivers();
 
-	void populate_serials(std::shared_ptr<sigrok::Driver> driver);
+	void populate_serials(shared_ptr<sigrok::Driver> driver);
 
 	void unset_connection();
 

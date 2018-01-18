@@ -25,6 +25,12 @@
 #include <deque>
 #include <memory>
 
+#include <QObject>
+
+using std::deque;
+using std::shared_ptr;
+using std::vector;
+
 namespace pv {
 namespace data {
 
@@ -32,23 +38,38 @@ class AnalogSegment;
 
 class Analog : public SignalData
 {
+	Q_OBJECT
+
 public:
 	Analog();
 
-	void push_segment(
-		std::shared_ptr<AnalogSegment> &segment);
+	void push_segment(shared_ptr<AnalogSegment> &segment);
 
-	const std::deque< std::shared_ptr<AnalogSegment> >&
-		analog_segments() const;
+	const deque< shared_ptr<AnalogSegment> >& analog_segments() const;
 
-	std::vector< std::shared_ptr<Segment> > segments() const;
+	vector< shared_ptr<Segment> > segments() const;
+
+	uint32_t get_segment_count() const;
 
 	void clear();
 
 	uint64_t max_sample_count() const;
 
+	void notify_samples_added(QObject* segment, uint64_t start_sample,
+		uint64_t end_sample);
+
+	void notify_min_max_changed(float min, float max);
+
+Q_SIGNALS:
+	void samples_cleared();
+
+	void samples_added(QObject* segment, uint64_t start_sample,
+		uint64_t end_sample);
+
+	void min_max_changed(float min, float max);
+
 private:
-	std::deque< std::shared_ptr<AnalogSegment> > segments_;
+	deque< shared_ptr<AnalogSegment> > segments_;
 };
 
 } // namespace data

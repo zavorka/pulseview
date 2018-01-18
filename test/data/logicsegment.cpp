@@ -19,14 +19,16 @@
 
 #include <extdef.h>
 
-#include <stdint.h>
+#include <cstdint>
 
 #include <boost/test/unit_test.hpp>
 
 #include <pv/data/logicsegment.hpp>
 
+#if 0
 using pv::data::LogicSegment;
 using std::vector;
+#endif
 
 // Dummy, remove again when unit tests are fixed.
 BOOST_AUTO_TEST_SUITE(DummyTestSuite)
@@ -420,7 +422,7 @@ BOOST_AUTO_TEST_CASE(LongPulses)
 	BOOST_CHECK_EQUAL(edges[0].second, true);
 	BOOST_CHECK_EQUAL(edges[1].first, 16);
 	BOOST_CHECK_EQUAL(edges[1].second, false);
-	
+
 	for (int i = 1; i < Cycles; i++) {
 		BOOST_CHECK_EQUAL(edges[i+1].first, i * Period);
 		BOOST_CHECK_EQUAL(edges[i+1].second, false);

@@ -20,6 +20,7 @@
 
 set(pulseview_TEST_SOURCES
 	${PROJECT_SOURCE_DIR}/pv/devicemanager.cpp
+	${PROJECT_SOURCE_DIR}/pv/globalsettings.cpp
 	${PROJECT_SOURCE_DIR}/pv/session.cpp
 	${PROJECT_SOURCE_DIR}/pv/storesession.cpp
 	${PROJECT_SOURCE_DIR}/pv/util.cpp
@@ -50,31 +51,30 @@ set(pulseview_TEST_SOURCES
 	${PROJECT_SOURCE_DIR}/pv/popups/channels.cpp
 	${PROJECT_SOURCE_DIR}/pv/popups/deviceoptions.cpp
 	${PROJECT_SOURCE_DIR}/pv/toolbars/mainbar.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/analogsignal.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/cursor.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/cursorpair.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/flag.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/header.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/marginwidget.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/logicsignal.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/rowitem.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/ruler.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/signal.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/signalscalehandle.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/timeitem.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/timemarker.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/trace.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/tracegroup.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/tracepalette.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/tracetreeitem.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/tracetreeitemowner.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/triggermarker.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/view.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/viewitem.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/viewitemowner.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/viewitempaintparams.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/viewport.cpp
-	${PROJECT_SOURCE_DIR}/pv/view/viewwidget.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/analogsignal.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/cursor.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/cursorpair.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/flag.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/header.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/marginwidget.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/logicsignal.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/rowitem.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/ruler.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/signal.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/timeitem.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/timemarker.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/trace.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/tracegroup.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/tracepalette.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/tracetreeitem.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/tracetreeitemowner.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/triggermarker.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/view.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/viewitem.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/viewitemowner.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/viewitempaintparams.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/viewport.cpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/viewwidget.cpp
 	${PROJECT_SOURCE_DIR}/pv/views/viewbase.cpp
 	${PROJECT_SOURCE_DIR}/pv/views/trace/standardbar.cpp
 	${PROJECT_SOURCE_DIR}/pv/widgets/colourbutton.cpp
@@ -89,6 +89,7 @@ set(pulseview_TEST_SOURCES
 	${PROJECT_SOURCE_DIR}/pv/widgets/wellarray.cpp
 	data/analogsegment.cpp
 	data/logicsegment.cpp
+	data/segment.cpp
 	view/ruler.cpp
 	test.cpp
 	util.cpp
@@ -96,9 +97,14 @@ set(pulseview_TEST_SOURCES
 
 # This list includes only QObject derived class headers.
 set(pulseview_TEST_HEADERS
+	${PROJECT_SOURCE_DIR}/pv/globalsettings.hpp
 	${PROJECT_SOURCE_DIR}/pv/session.hpp
 	${PROJECT_SOURCE_DIR}/pv/storesession.hpp
 	${PROJECT_SOURCE_DIR}/pv/binding/device.hpp
+	${PROJECT_SOURCE_DIR}/pv/data/analog.hpp
+	${PROJECT_SOURCE_DIR}/pv/data/analogsegment.hpp
+	${PROJECT_SOURCE_DIR}/pv/data/logic.hpp
+	${PROJECT_SOURCE_DIR}/pv/data/logicsegment.hpp
 	${PROJECT_SOURCE_DIR}/pv/data/signalbase.hpp
 	${PROJECT_SOURCE_DIR}/pv/devices/device.hpp
 	${PROJECT_SOURCE_DIR}/pv/dialogs/connect.hpp
@@ -113,26 +119,25 @@ set(pulseview_TEST_HEADERS
 	${PROJECT_SOURCE_DIR}/pv/prop/property.hpp
 	${PROJECT_SOURCE_DIR}/pv/prop/string.hpp
 	${PROJECT_SOURCE_DIR}/pv/toolbars/mainbar.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/analogsignal.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/cursor.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/flag.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/header.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/logicsignal.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/marginwidget.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/rowitem.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/ruler.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/signal.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/signalscalehandle.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/timeitem.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/timemarker.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/trace.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/tracegroup.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/tracetreeitem.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/triggermarker.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/view.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/viewitem.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/viewport.hpp
-	${PROJECT_SOURCE_DIR}/pv/view/viewwidget.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/analogsignal.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/cursor.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/flag.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/header.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/logicsignal.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/marginwidget.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/rowitem.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/ruler.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/signal.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/timeitem.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/timemarker.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/trace.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/tracegroup.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/tracetreeitem.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/triggermarker.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/view.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/viewitem.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/viewport.hpp
+	${PROJECT_SOURCE_DIR}/pv/views/trace/viewwidget.hpp
 	${PROJECT_SOURCE_DIR}/pv/views/viewbase.hpp
 	${PROJECT_SOURCE_DIR}/pv/views/trace/standardbar.hpp
 	${PROJECT_SOURCE_DIR}/pv/widgets/colourbutton.hpp
@@ -150,33 +155,22 @@ set(pulseview_TEST_HEADERS
 if(ENABLE_DECODE)
 	list(APPEND pulseview_TEST_SOURCES
 		${PROJECT_SOURCE_DIR}/pv/binding/decoder.cpp
-		${PROJECT_SOURCE_DIR}/pv/data/decoderstack.cpp
+		${PROJECT_SOURCE_DIR}/pv/data/decodesignal.cpp
 		${PROJECT_SOURCE_DIR}/pv/data/decode/annotation.cpp
 		${PROJECT_SOURCE_DIR}/pv/data/decode/decoder.cpp
 		${PROJECT_SOURCE_DIR}/pv/data/decode/row.cpp
 		${PROJECT_SOURCE_DIR}/pv/data/decode/rowdata.cpp
-		${PROJECT_SOURCE_DIR}/pv/view/decodetrace.cpp
+		${PROJECT_SOURCE_DIR}/pv/views/trace/decodetrace.cpp
 		${PROJECT_SOURCE_DIR}/pv/widgets/decodergroupbox.cpp
 		${PROJECT_SOURCE_DIR}/pv/widgets/decodermenu.cpp
-		data/decoderstack.cpp
 	)
 
 	list(APPEND pulseview_TEST_HEADERS
-		${PROJECT_SOURCE_DIR}/pv/data/decoderstack.hpp
-		${PROJECT_SOURCE_DIR}/pv/view/decodetrace.hpp
+		${PROJECT_SOURCE_DIR}/pv/data/decodesignal.hpp
+		${PROJECT_SOURCE_DIR}/pv/views/trace/decodetrace.hpp
 		${PROJECT_SOURCE_DIR}/pv/widgets/decodergroupbox.hpp
 		${PROJECT_SOURCE_DIR}/pv/widgets/decodermenu.hpp
 	)
-endif()
-
-if(Qt5Core_FOUND)
-	qt5_wrap_cpp(pulseview_TEST_HEADERS_MOC ${pulseview_TEST_HEADERS})
-else()
-	# Workaround for QTBUG-22829: -DBOOST_NEXT_PRIOR_HPP_INCLUDED.
-	# https://bugreports.qt.io/browse/QTBUG-22829
-	qt4_wrap_cpp(pulseview_TEST_HEADERS_MOC ${pulseview_TEST_HEADERS}
-		OPTIONS -DBOOST_NEXT_PRIOR_HPP_INCLUDED)
-	include(${QT_USE_FILE})
 endif()
 
 # On MinGW we need to use static linking.

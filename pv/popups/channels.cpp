@@ -19,14 +19,6 @@
 
 #include <map>
 
-#ifdef _WIN32
-// Windows: Avoid boost/thread namespace pollution (which includes windows.h).
-#define NOGDI
-#define NORESOURCE
-#endif
-#include <boost/thread/locks.hpp>
-#include <boost/thread/shared_mutex.hpp>
-
 #include <QCheckBox>
 #include <QFormLayout>
 #include <QGridLayout>
@@ -38,19 +30,15 @@
 #include <pv/data/signalbase.hpp>
 #include <pv/devices/device.hpp>
 #include <pv/session.hpp>
-#include <pv/view/signal.hpp>
+#include <pv/views/trace/signal.hpp>
 
 #include <libsigrokcxx/libsigrokcxx.hpp>
 
 using namespace Qt;
 
-using boost::shared_lock;
-using boost::shared_mutex;
-using std::lock_guard;
 using std::map;
-using std::mutex;
-using std::set;
 using std::shared_ptr;
+using std::make_shared;
 using std::unordered_set;
 using std::vector;
 
@@ -165,7 +153,7 @@ void Channels::populate_group(shared_ptr<ChannelGroup> group,
 	// popup.
 	shared_ptr<Device> binding;
 	if (group)
-		binding = shared_ptr<Device>(new Device(group));
+		binding = make_shared<Device>(group);
 
 	// Create a title if the group is going to have any content
 	if ((!sigs.empty() || (binding && !binding->properties().empty())) &&
@@ -174,13 +162,11 @@ void Channels::populate_group(shared_ptr<ChannelGroup> group,
 			QString("<h3>%1</h3>").arg(group->name().c_str())));
 
 	// Create the channel group grid
-	QGridLayout *const channel_grid =
-		create_channel_group_grid(sigs);
+	QGridLayout *const channel_grid = create_channel_group_grid(sigs);
 	layout_.addRow(channel_grid);
 
 	// Create the channel group options
-	if (binding)
-	{
+	if (binding) {
 		binding->add_properties_to_form(&layout_, true);
 		group_bindings_.push_back(binding);
 	}
@@ -258,5 +244,5 @@ void Channels::disable_all_channels()
 	set_all_channels(false);
 }
 
-} // popups
-} // pv
+}  // namespace popups
+}  // namespace pv

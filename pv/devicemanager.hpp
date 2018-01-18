@@ -23,7 +23,16 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
+#include <vector>
+
+using std::list;
+using std::map;
+using std::set;
+using std::shared_ptr;
+using std::string;
+using std::vector;
 
 namespace Glib {
 class VariantBase;
@@ -34,6 +43,8 @@ class ConfigKey;
 class Context;
 class Driver;
 }
+
+using sigrok::ConfigKey;
 
 namespace pv {
 
@@ -47,34 +58,39 @@ class Session;
 class DeviceManager
 {
 public:
-	DeviceManager(std::shared_ptr<sigrok::Context> context);
+	DeviceManager(shared_ptr<sigrok::Context> context, std::string driver);
 
 	~DeviceManager() = default;
 
-	const std::shared_ptr<sigrok::Context>& context() const;
+	const shared_ptr<sigrok::Context>& context() const;
 
-	std::shared_ptr<sigrok::Context> context();
+	shared_ptr<sigrok::Context> context();
 
-	const std::list< std::shared_ptr<devices::HardwareDevice> >&
-		devices() const;
+	const list< shared_ptr<devices::HardwareDevice> >& devices() const;
+	shared_ptr<devices::HardwareDevice> user_spec_device() const;
 
-	std::list< std::shared_ptr<devices::HardwareDevice> > driver_scan(
-		std::shared_ptr<sigrok::Driver> driver,
-		std::map<const sigrok::ConfigKey *, Glib::VariantBase> drvopts);
+	list< shared_ptr<devices::HardwareDevice> > driver_scan(
+		shared_ptr<sigrok::Driver> driver,
+		map<const sigrok::ConfigKey *, Glib::VariantBase> drvopts);
 
-	const std::map<std::string, std::string> get_device_info(
-		const std::shared_ptr<devices::Device> device);
+	const map<string, string> get_device_info(
+		const shared_ptr<devices::Device> device);
 
-	const std::shared_ptr<devices::HardwareDevice> find_device_from_info(
-		const std::map<std::string, std::string> search_info);
+	const shared_ptr<devices::HardwareDevice> find_device_from_info(
+		const map<string, string> search_info);
 
 private:
-	bool compare_devices(std::shared_ptr<devices::Device> a,
-		std::shared_ptr<devices::Device> b);
+	bool compare_devices(shared_ptr<devices::Device> a,
+		shared_ptr<devices::Device> b);
+
+	static map<const ConfigKey *, Glib::VariantBase>
+	drive_scan_options(vector<string> user_spec,
+		set<const ConfigKey *> driver_opts);
 
 protected:
-	std::shared_ptr<sigrok::Context> context_;
-	std::list< std::shared_ptr<devices::HardwareDevice> > devices_;
+	shared_ptr<sigrok::Context> context_;
+	list< shared_ptr<devices::HardwareDevice> > devices_;
+	shared_ptr<devices::HardwareDevice> user_spec_device_;
 };
 
 } // namespace pv

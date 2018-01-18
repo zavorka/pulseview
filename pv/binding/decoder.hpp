@@ -24,12 +24,14 @@
 
 #include <pv/prop/property.hpp>
 
+using std::shared_ptr;
+
 struct srd_decoder_option;
 
 namespace pv {
 
 namespace data {
-class DecoderStack;
+class DecodeSignal;
 namespace decode {
 class Decoder;
 }
@@ -40,12 +42,12 @@ namespace binding {
 class Decoder : public Binding
 {
 public:
-	Decoder(std::shared_ptr<pv::data::DecoderStack> decoder_stack,
-		std::shared_ptr<pv::data::decode::Decoder> decoder);
+	Decoder(shared_ptr<pv::data::DecodeSignal> decode_signal,
+		shared_ptr<pv::data::decode::Decoder> decoder);
 
 private:
-	static std::shared_ptr<prop::Property> bind_enum(const QString &name,
-		const srd_decoder_option *option,
+	static shared_ptr<prop::Property> bind_enum(const QString &name,
+		const QString &desc, const srd_decoder_option *option,
 		prop::Property::Getter getter, prop::Property::Setter setter);
 
 	Glib::VariantBase getter(const char *id);
@@ -53,11 +55,11 @@ private:
 	void setter(const char *id, Glib::VariantBase value);
 
 private:
-	std::shared_ptr<pv::data::DecoderStack> decoder_stack_;
-	std::shared_ptr<pv::data::decode::Decoder> decoder_;
+	shared_ptr<pv::data::DecodeSignal> decode_signal_;
+	shared_ptr<pv::data::decode::Decoder> decoder_;
 };
 
-} // binding
-} // pv
+}  // namespace binding
+}  // namespace pv
 
 #endif // PULSEVIEW_PV_BINDING_DECODER_HPP

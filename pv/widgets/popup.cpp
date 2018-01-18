@@ -18,13 +18,12 @@
  */
 
 #include <algorithm>
+#include <cassert>
 
-#include <assert.h>
-
-#include <QtGui>
 #include <QApplication>
 #include <QDesktopWidget>
 #include <QLineEdit>
+#include <QtGui>
 
 #include "popup.hpp"
 
@@ -120,7 +119,7 @@ bool Popup::space_for_arrow() const
 	case Bottom:
 		if (point_.y() > y())
 			return false;
-		return true;		
+		return true;
 
 	case Left:
 		if (point_.x() < (x() + width()))
@@ -141,7 +140,7 @@ QPolygon Popup::arrow_polygon() const
 	QPolygon poly;
 
 	const QPoint p = mapFromGlobal(point_);
-	const int l = ArrowLength + ArrowOverlap; 
+	const int l = ArrowLength + ArrowOverlap;
 
 	switch (pos_) {
 	case Right:
@@ -169,7 +168,7 @@ QPolygon Popup::arrow_polygon() const
 	case Left:
 		poly << QPoint(p.x() - l, p.y() + l);
 		break;
-		
+
 	case Top:
 		poly << QPoint(p.x() + l, p.y() - l);
 		break;

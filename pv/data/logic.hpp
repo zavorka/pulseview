@@ -24,6 +24,12 @@
 
 #include <deque>
 
+#include <QObject>
+
+using std::deque;
+using std::shared_ptr;
+using std::vector;
+
 namespace pv {
 namespace data {
 
@@ -31,26 +37,37 @@ class LogicSegment;
 
 class Logic : public SignalData
 {
+	Q_OBJECT
+
 public:
 	Logic(unsigned int num_channels);
 
 	unsigned int num_channels() const;
 
-	void push_segment(
-		std::shared_ptr<LogicSegment> &segment);
+	void push_segment(shared_ptr<LogicSegment> &segment);
 
-	const std::deque< std::shared_ptr<LogicSegment> >&
-		logic_segments() const;
+	const deque< shared_ptr<LogicSegment> >& logic_segments() const;
 
-	std::vector< std::shared_ptr<Segment> > segments() const;
+	vector< shared_ptr<Segment> > segments() const;
+
+	uint32_t get_segment_count() const;
 
 	void clear();
 
 	uint64_t max_sample_count() const;
 
+	void notify_samples_added(QObject* segment, uint64_t start_sample,
+		uint64_t end_sample);
+
+Q_SIGNALS:
+	void samples_cleared();
+
+	void samples_added(QObject* segment, uint64_t start_sample,
+		uint64_t end_sample);
+
 private:
 	const unsigned int num_channels_;
-	std::deque< std::shared_ptr<LogicSegment> > segments_;
+	deque< shared_ptr<LogicSegment> > segments_;
 };
 
 } // namespace data

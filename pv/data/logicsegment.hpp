@@ -25,6 +25,12 @@
 #include <utility>
 #include <vector>
 
+#include <QObject>
+
+using std::pair;
+using std::shared_ptr;
+using std::vector;
+
 namespace sigrok {
 	class Logic;
 }
@@ -40,8 +46,18 @@ struct LongPulses;
 namespace pv {
 namespace data {
 
+class Logic;
+
+typedef struct {
+	uint64_t sample_index, chunk_num, chunk_offs;
+	uint8_t* chunk;
+	uint8_t* value;
+} SegmentLogicDataIterator;
+
 class LogicSegment : public Segment
 {
+	Q_OBJECT
+
 private:
 	struct MipMapLevel
 	{
@@ -58,27 +74,32 @@ private:
 	static const uint64_t MipMapDataUnit;
 
 public:
-	typedef std::pair<int64_t, bool> EdgePair;
+	typedef pair<int64_t, bool> EdgePair;
 
 public:
-	LogicSegment(std::shared_ptr<sigrok::Logic> logic,
-		uint64_t samplerate, uint64_t expected_num_samples = 0);
+	LogicSegment(pv::data::Logic& owner, uint32_t segment_id,
+		unsigned int unit_size, uint64_t samplerate);
 
 	virtual ~LogicSegment();
 
-	void append_payload(std::shared_ptr<sigrok::Logic> logic);
+	void append_payload(shared_ptr<sigrok::Logic> logic);
+	void append_payload(void *data, uint64_t data_size);
 
-	const uint8_t* get_samples(int64_t start_sample, int64_t end_sample) const;
+	void get_samples(int64_t start_sample, int64_t end_sample, uint8_t* dest) const;
+
+	SegmentLogicDataIterator* begin_sample_iteration(uint64_t start);
+	void continue_sample_iteration(SegmentLogicDataIterator* it, uint64_t increase);
+	void end_sample_iteration(SegmentLogicDataIterator* it);
 
 private:
 	uint64_t unpack_sample(const uint8_t *ptr) const;
 	void pack_sample(uint8_t *ptr, uint64_t value);
-	
+
 	void reallocate_mipmap_level(MipMapLevel &m);
 
 	void append_payload_to_mipmap();
 
-	uint64_t get_sample(uint64_t index) const;
+	uint64_t get_unpacked_sample(uint64_t index) const;
 
 public:
 	/**
@@ -91,7 +112,7 @@ public:
 	 * can be resolved at this level of detail.
 	 * @param[in] sig_index The index of the signal.
 	 */
-	void get_subsampled_edges(std::vector<EdgePair> &edges,
+	void get_subsampled_edges(vector<EdgePair> &edges,
 		uint64_t start, uint64_t end,
 		float min_length, int sig_index);
 
@@ -101,6 +122,8 @@ private:
 	static uint64_t pow2_ceil(uint64_t x, unsigned int power);
 
 private:
+	Logic& owner_;
+
 	struct MipMapLevel mip_map_[ScaleStepCount];
 	uint64_t last_append_sample_;
 

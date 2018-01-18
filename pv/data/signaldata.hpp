@@ -24,19 +24,28 @@
 #include <memory>
 #include <vector>
 
+#include <QObject>
+
+using std::shared_ptr;
+using std::vector;
+
 namespace pv {
 namespace data {
 
 class Segment;
 
-class SignalData
+class SignalData : public QObject
 {
-public:
-	SignalData() = default;
-	virtual ~SignalData() {}
+	Q_OBJECT
 
 public:
-	virtual std::vector< std::shared_ptr<Segment> > segments() const = 0;
+	SignalData() = default;
+	virtual ~SignalData() = default;
+
+public:
+	virtual vector< shared_ptr<Segment> > segments() const = 0;
+
+	virtual uint32_t get_segment_count() const = 0;
 
 	virtual void clear() = 0;
 

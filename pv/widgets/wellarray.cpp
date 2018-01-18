@@ -39,8 +39,8 @@
 **
 ****************************************************************************/
 
-#include <QPainter>
 #include <QPaintEvent>
+#include <QPainter>
 #include <QStyle>
 #include <QStyleOptionFrame>
 
@@ -220,7 +220,7 @@ void WellArray::setSelected(int row, int col)
     updateCell(oldRow, oldCol);
     updateCell(selRow, selCol);
     if (row >= 0)
-        Q_EMIT selected(row, col);
+        selected(row, col);
 }
 
 void WellArray::focusInEvent(QFocusEvent*)
@@ -265,7 +265,7 @@ void WellArray::focusOutEvent(QFocusEvent*)
 */
 void WellArray::keyPressEvent(QKeyEvent* event)
 {
-    switch(event->key()) {                        // Look at the key code
+    switch (event->key()) {                        // Look at the key code
     case Qt::Key_Left:                                // If 'left arrow'-key,
         if (curCol > 0)                        // and cr't not in leftmost col
             setCurrent(curRow, curCol - 1);        // set cr't to next left column
@@ -292,5 +292,5 @@ void WellArray::keyPressEvent(QKeyEvent* event)
 
 }
 
-} // namespace wellarray
+}  // namespace widgets
 } // namespace pv

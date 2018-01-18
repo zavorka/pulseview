@@ -17,7 +17,7 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <assert.h>
+#include <cassert>
 
 #include <QLineEdit>
 #include <QSpinBox>
@@ -32,9 +32,10 @@ namespace pv {
 namespace prop {
 
 String::String(QString name,
+	QString desc,
 	Getter getter,
 	Setter setter) :
-	Property(name, getter, setter),
+	Property(name, desc, getter, setter),
 	line_edit_(nullptr)
 {
 }
@@ -80,5 +81,5 @@ void String::on_text_edited(const QString&)
 	commit();
 }
 
-} // prop
-} // pv
+}  // namespace prop
+}  // namespace pv

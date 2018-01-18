@@ -21,13 +21,20 @@
 
 #include <extdef.h>
 
-#include <assert.h>
-
 #include <algorithm>
+#include <cassert>
 #include <sstream>
 
-#include <QTextStream>
 #include <QDebug>
+#include <QTextStream>
+
+using std::fixed;
+using std::max;
+using std::ostringstream;
+using std::setfill;
+using std::setprecision;
+using std::showpos;
+using std::string;
 
 using namespace Qt;
 
@@ -83,18 +90,18 @@ static QTextStream& operator<<(QTextStream& stream, const Timestamp& t)
 
 	int precision = stream.realNumberPrecision();
 
-	std::ostringstream ss;
-	ss << std::fixed;
+	ostringstream ss;
+	ss << fixed;
 
 	if (stream.numberFlags() & QTextStream::ForceSign)
-		ss << std::showpos;
+		ss << showpos;
 
 	if (0 == precision)
-		ss << std::setprecision(1) << round(t);
+		ss << setprecision(1) << round(t);
 	else
-		ss << std::setprecision(precision) << t;
+		ss << setprecision(precision) << t;
 
-	std::string str(ss.str());
+	string str(ss.str());
 	if (0 == precision) {
 		// remove the separator and the unwanted decimal place
 		str.resize(str.size() - 2);
@@ -103,12 +110,8 @@ static QTextStream& operator<<(QTextStream& stream, const Timestamp& t)
 	return stream << QString::fromStdString(str);
 }
 
-QString format_time_si(
-	const Timestamp& v,
-	SIPrefix prefix,
-	unsigned int precision,
-	QString unit,
-	bool sign)
+QString format_time_si(const Timestamp& v, SIPrefix prefix,
+	unsigned int precision, QString unit, bool sign)
 {
 	if (prefix == SIPrefix::unspecified) {
 		// No prefix given, calculate it
@@ -135,22 +138,14 @@ QString format_time_si(
 	QTextStream ts(&s);
 	if (sign && !v.is_zero())
 		ts << forcesign;
-	ts
-		<< qSetRealNumberPrecision(precision)
-		<< (v * multiplier)
-		<< ' '
-		<< prefix
-		<< unit;
+	ts << qSetRealNumberPrecision(precision) << (v * multiplier) << ' '
+		<< prefix << unit;
 
 	return s;
 }
 
-QString format_time_si_adjusted(
-	const Timestamp& t,
-	SIPrefix prefix,
-	unsigned precision,
-	QString unit,
-	bool sign)
+QString format_time_si_adjusted(const Timestamp& t, SIPrefix prefix,
+	unsigned precision, QString unit, bool sign)
 {
 	// The precision is always given without taking the prefix into account
 	// so we need to deduct the number of decimals the prefix might imply
@@ -158,11 +153,10 @@ QString format_time_si_adjusted(
 
 	const unsigned int relative_prec =
 		(prefix >= SIPrefix::none) ? precision :
-		std::max((int)(precision - prefix_order), 0);
+		max((int)(precision - prefix_order), 0);
 
 	return format_time_si(t, prefix, relative_prec, unit, sign);
 }
-
 
 // Helper for 'format_time_minutes()'.
 static QString pad_number(unsigned int number, int length)
@@ -213,13 +207,9 @@ QString format_time_minutes(const Timestamp& t, signed precision, bool sign)
 
 		const Timestamp fraction = fabs(t) - whole_seconds;
 
-		std::ostringstream ss;
-		ss
-			<< std::fixed
-			<< std::setprecision(precision)
-			<< std::setfill('0')
-			<< fraction;
-		std::string fs = ss.str();
+		ostringstream ss;
+		ss << fixed << setprecision(precision) << setfill('0') << fraction;
+		string fs = ss.str();
 
 		// Copy all digits, inserting spaces as unit separators
 		for (int i = 1; i <= precision; i++) {
@@ -232,6 +222,28 @@ QString format_time_minutes(const Timestamp& t, signed precision, bool sign)
 	}
 
 	return s;
+}
+
+/**
+ * Split a string into tokens at occurences of the separator.
+ *
+ * @param[in] text The input string to split.
+ * @param[in] separator The delimiter between tokens.
+ *
+ * @return A vector of broken down tokens.
+ */
+vector<string> split_string(string text, string separator)
+{
+	vector<string> result;
+	size_t pos;
+
+	while ((pos = text.find(separator)) != std::string::npos) {
+		result.push_back(text.substr(0, pos));
+		text = text.substr(pos + separator.length());
+	}
+	result.push_back(text);
+
+	return result;
 }
 
 } // namespace util

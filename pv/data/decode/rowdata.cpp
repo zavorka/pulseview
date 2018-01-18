@@ -25,10 +25,6 @@ namespace pv {
 namespace data {
 namespace decode {
 
-RowData::RowData()
-{
-}
-
 uint64_t RowData::get_max_sample() const
 {
 	if (annotations_.empty())
@@ -46,11 +42,11 @@ void RowData::get_annotation_subset(
 			dest.push_back(annotation);
 }
 
-void RowData::push_annotation(const Annotation &a)
+void RowData::emplace_annotation(srd_proto_data *pdata)
 {
-	annotations_.push_back(a);
+	annotations_.emplace_back(pdata);
 }
 
-} // decode
-} // data
-} // pv
+}  // namespace decode
+}  // namespace data
+}  // namespace pv

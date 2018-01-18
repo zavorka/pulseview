@@ -20,9 +20,12 @@
 #ifndef PULSEVIEW_PV_VIEW_DECODE_ANNOTATION_HPP
 #define PULSEVIEW_PV_VIEW_DECODE_ANNOTATION_HPP
 
-#include <stdint.h>
+#include <cstdint>
+#include <vector>
 
 #include <QString>
+
+using std::vector;
 
 struct srd_proto_data;
 
@@ -38,13 +41,13 @@ public:
 	uint64_t start_sample() const;
 	uint64_t end_sample() const;
 	int format() const;
-	const std::vector<QString>& annotations() const;
+	const vector<QString>& annotations() const;
 
 private:
 	uint64_t start_sample_;
 	uint64_t end_sample_;
 	int format_;
-	std::vector<QString> annotations_;
+	vector<QString> annotations_;
 };
 
 } // namespace decode

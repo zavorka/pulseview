@@ -17,23 +17,23 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdint.h>
+#include <cstdint>
 
 #include <QDebug>
 
 #include "device.hpp"
 
 #include <pv/prop/bool.hpp>
-#include <pv/prop/double.hpp>
 #include <pv/prop/enum.hpp>
 #include <pv/prop/int.hpp>
 
 #include <libsigrokcxx/libsigrokcxx.hpp>
 
 using boost::optional;
+
 using std::function;
-using std::make_pair;
 using std::pair;
+using std::set;
 using std::shared_ptr;
 using std::string;
 using std::vector;
@@ -44,7 +44,6 @@ using sigrok::ConfigKey;
 using sigrok::Error;
 
 using pv::prop::Bool;
-using pv::prop::Double;
 using pv::prop::Enum;
 using pv::prop::Int;
 using pv::prop::Property;
@@ -89,8 +88,7 @@ Device::Device(shared_ptr<sigrok::Configurable> configurable) :
 			break;
 
 		case SR_CONF_CAPTURE_RATIO:
-			bind_int(name, "%", pair<int64_t, int64_t>(0, 100),
-				get, set);
+			bind_int(name, "", "%", pair<int64_t, int64_t>(0, 100), get, set);
 			break;
 
 		case SR_CONF_PATTERN_MODE:
@@ -99,33 +97,33 @@ Device::Device(shared_ptr<sigrok::Configurable> configurable) :
 		case SR_CONF_TRIGGER_SLOPE:
 		case SR_CONF_COUPLING:
 		case SR_CONF_CLOCK_EDGE:
-			bind_enum(name, key, capabilities, get, set);
+			bind_enum(name, "", key, capabilities, get, set);
 			break;
 
 		case SR_CONF_FILTER:
 		case SR_CONF_EXTERNAL_CLOCK:
 		case SR_CONF_RLE:
 		case SR_CONF_POWER_OFF:
-			bind_bool(name, get, set);
+			bind_bool(name, "", get, set);
 			break;
 
 		case SR_CONF_TIMEBASE:
-			bind_enum(name, key, capabilities, get, set, print_timebase);
+			bind_enum(name, "", key, capabilities, get, set, print_timebase);
 			break;
 
 		case SR_CONF_VDIV:
-			bind_enum(name, key, capabilities, get, set, print_vdiv);
+			bind_enum(name, "", key, capabilities, get, set, print_vdiv);
 			break;
 
 		case SR_CONF_VOLTAGE_THRESHOLD:
-			bind_enum(name, key, capabilities, get, set, print_voltage_threshold);
+			bind_enum(name, "", key, capabilities, get, set, print_voltage_threshold);
 			break;
 
 		case SR_CONF_PROBE_FACTOR:
 			if (capabilities.count(Capability::LIST))
-				bind_enum(name, key, capabilities, get, set, print_probe_factor);
+				bind_enum(name, "", key, capabilities, get, set, print_probe_factor);
 			else
-				bind_int(name, "", pair<int64_t, int64_t>(1, 500), get, set);
+				bind_int(name, "", "", pair<int64_t, int64_t>(1, 500), get, set);
 			break;
 
 		default:
@@ -134,50 +132,56 @@ Device::Device(shared_ptr<sigrok::Configurable> configurable) :
 	}
 }
 
-void Device::bind_bool(const QString &name,
+void Device::bind_bool(const QString &name, const QString &desc,
 	Property::Getter getter, Property::Setter setter)
 {
 	assert(configurable_);
 	properties_.push_back(shared_ptr<Property>(new Bool(
-		name, getter, setter)));
+		name, desc, getter, setter)));
 }
 
-void Device::bind_enum(const QString &name,
-	const ConfigKey *key, std::set<const Capability *> capabilities,
+void Device::bind_enum(const QString &name, const QString &desc,
+	const ConfigKey *key, set<const Capability *> capabilities,
 	Property::Getter getter,
 	Property::Setter setter, function<QString (Glib::VariantBase)> printer)
 {
-	Glib::VariantBase gvar;
-	vector< pair<Glib::VariantBase, QString> > values;
-
 	assert(configurable_);
 
 	if (!capabilities.count(Capability::LIST))
 		return;
 
-	Glib::VariantIter iter(configurable_->config_list(key));
-	while ((iter.next_value(gvar)))
-		values.push_back(make_pair(gvar, printer(gvar)));
+	try {
+		Glib::VariantContainerBase gvar = configurable_->config_list(key);
+		Glib::VariantIter iter(gvar);
 
-	properties_.push_back(shared_ptr<Property>(new Enum(name, values,
-		getter, setter)));
+		vector< pair<Glib::VariantBase, QString> > values;
+		while ((iter.next_value(gvar)))
+			values.emplace_back(gvar, printer(gvar));
+
+		properties_.push_back(shared_ptr<Property>(new Enum(name, desc, values,
+			getter, setter)));
+
+	} catch (sigrok::Error& e) {
+		qDebug() << "Error: Listing device key" << name << "failed!";
+		return;
+	}
 }
 
-void Device::bind_int(const QString &name, QString suffix,
-	optional< std::pair<int64_t, int64_t> > range,
+void Device::bind_int(const QString &name, const QString &desc, QString suffix,
+	optional< pair<int64_t, int64_t> > range,
 	Property::Getter getter, Property::Setter setter)
 {
 	assert(configurable_);
 
-	properties_.push_back(shared_ptr<Property>(new Int(name, suffix, range,
-		getter, setter)));
+	properties_.push_back(shared_ptr<Property>(new Int(name, desc, suffix,
+		range, getter, setter)));
 }
 
 QString Device::print_timebase(Glib::VariantBase gvar)
 {
 	uint64_t p, q;
 	g_variant_get(gvar.gobj(), "(tt)", &p, &q);
-	return QString::fromUtf8(sr_period_string(p * q));
+	return QString::fromUtf8(sr_period_string(p, q));
 }
 
 QString Device::print_vdiv(Glib::VariantBase gvar)
@@ -201,5 +205,5 @@ QString Device::print_probe_factor(Glib::VariantBase gvar)
 	return QString("%1x").arg(factor);
 }
 
-} // binding
-} // pv
+}  // namespace binding
+}  // namespace pv

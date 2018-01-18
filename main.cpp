@@ -21,12 +21,13 @@
 #include <libsigrokdecode/libsigrokdecode.h> /* First, so we avoid a _POSIX_C_SOURCE warning. */
 #endif
 
-#include <stdint.h>
+#include <cstdint>
 #include <libsigrokcxx/libsigrokcxx.hpp>
 
 #include <getopt.h>
 
 #include <QDebug>
+#include <QSettings>
 
 #ifdef ENABLE_SIGNALS
 #include "signalhandler.hpp"
@@ -35,6 +36,7 @@
 #include "pv/application.hpp"
 #include "pv/devicemanager.hpp"
 #include "pv/mainwindow.hpp"
+#include "pv/session.hpp"
 #ifdef ANDROID
 #include <libsigrokandroidutils/libsigrokandroidutils.h>
 #include "android/assetreader.hpp"
@@ -49,11 +51,15 @@ Q_IMPORT_PLUGIN(QWindowsIntegrationPlugin)
 Q_IMPORT_PLUGIN(QSvgPlugin)
 #endif
 
+using std::exception;
+using std::shared_ptr;
+using std::string;
+
 void usage()
 {
 	fprintf(stdout,
 		"Usage:\n"
-		"  %s [OPTION…] — %s\n"
+		"  %s [OPTIONS] [FILE]\n"
 		"\n"
 		"Help Options:\n"
 		"  -h, -?, --help                  Show help option\n"
@@ -61,16 +67,19 @@ void usage()
 		"Application Options:\n"
 		"  -V, --version                   Show release version\n"
 		"  -l, --loglevel                  Set libsigrok/libsigrokdecode loglevel\n"
+		"  -d, --driver                    Specify the device driver to use\n"
 		"  -i, --input-file                Load input from file\n"
 		"  -I, --input-format              Input format\n"
-		"\n", PV_BIN_NAME, PV_DESCRIPTION);
+		"  -c, --clean                     Don't restore previous sessions on startup\n"
+		"\n", PV_BIN_NAME);
 }
 
 int main(int argc, char *argv[])
 {
 	int ret = 0;
-	std::shared_ptr<sigrok::Context> context;
-	std::string open_file, open_file_format;
+	shared_ptr<sigrok::Context> context;
+	string open_file, open_file_format, driver;
+	bool restore_sessions = true;
 
 	Application a(argc, argv);
 
@@ -81,18 +90,20 @@ int main(int argc, char *argv[])
 #endif
 
 	// Parse arguments
-	while (1) {
+	while (true) {
 		static const struct option long_options[] = {
 			{"help", no_argument, nullptr, 'h'},
 			{"version", no_argument, nullptr, 'V'},
 			{"loglevel", required_argument, nullptr, 'l'},
+			{"driver", required_argument, nullptr, 'd'},
 			{"input-file", required_argument, nullptr, 'i'},
 			{"input-format", required_argument, nullptr, 'I'},
+			{"clean", no_argument, nullptr, 'c'},
 			{nullptr, 0, nullptr, 0}
 		};
 
 		const int c = getopt_long(argc, argv,
-			"l:Vh?i:I:", long_options, nullptr);
+			"l:Vhc?d:i:I:", long_options, nullptr);
 		if (c == -1)
 			break;
 
@@ -110,14 +121,27 @@ int main(int argc, char *argv[])
 		case 'l':
 		{
 			const int loglevel = atoi(optarg);
+			if (loglevel < 0 || loglevel > 5) {
+				qDebug() << "ERROR: invalid log level spec.";
+				break;
+			}
 			context->set_log_level(sigrok::LogLevel::get(loglevel));
 
 #ifdef ENABLE_DECODE
 			srd_log_loglevel_set(loglevel);
 #endif
 
+			if (loglevel >= 5) {
+				const QSettings settings;
+				qDebug() << "Settings:" << settings.fileName()
+					<< "format" << settings.format();
+			}
 			break;
 		}
+
+		case 'd':
+			driver = optarg;
+			break;
 
 		case 'i':
 			open_file = optarg;
@@ -126,18 +150,25 @@ int main(int argc, char *argv[])
 		case 'I':
 			open_file_format = optarg;
 			break;
+
+		case 'c':
+			restore_sessions = false;
+			break;
 		}
 	}
 
 	if (argc - optind > 1) {
 		fprintf(stderr, "Only one file can be opened.\n");
 		return 1;
-	} else if (argc - optind == 1) {
-		open_file = argv[argc - 1];
 	}
+
+	if (argc - optind == 1)
+		open_file = argv[argc - 1];
 
 	// Initialise libsigrok
 	context = sigrok::Context::create();
+	pv::Session::sr_context = context;
+
 #ifdef ANDROID
 	context->set_resource_reader(&asset_reader);
 #endif
@@ -156,12 +187,19 @@ int main(int argc, char *argv[])
 
 		try {
 			// Create the device manager, initialise the drivers
-			pv::DeviceManager device_manager(context);
+			pv::DeviceManager device_manager(context, driver);
 
 			// Initialise the main window
-			pv::MainWindow w(device_manager,
-				open_file, open_file_format);
+			pv::MainWindow w(device_manager);
 			w.show();
+
+			if (restore_sessions)
+				w.restore_sessions();
+
+			if (!open_file.empty())
+				w.add_session_with_file(open_file, open_file_format);
+			else
+				w.add_default_session();
 
 #ifdef ENABLE_SIGNALS
 			if (SignalHandler::prepare_signals()) {
@@ -182,7 +220,7 @@ int main(int argc, char *argv[])
 			// Run the application
 			ret = a.exec();
 
-		} catch (std::exception e) {
+		} catch (exception e) {
 			qDebug() << e.what();
 		}
 
@@ -191,7 +229,7 @@ int main(int argc, char *argv[])
 		srd_exit();
 #endif
 
-	} while (0);
+	} while (false);
 
 	return ret;
 }

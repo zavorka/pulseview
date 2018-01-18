@@ -20,8 +20,7 @@
 #ifndef PULSEVIEW_PV_TOOLBARS_MAINBAR_HPP
 #define PULSEVIEW_PV_TOOLBARS_MAINBAR_HPP
 
-#include <stdint.h>
-
+#include <cstdint>
 #include <list>
 #include <memory>
 
@@ -39,13 +38,15 @@
 #include <pv/widgets/popuptoolbutton.hpp>
 #include <pv/widgets/sweeptimingwidget.hpp>
 
+using std::shared_ptr;
+
 namespace sigrok {
 class Device;
 class InputFormat;
 class OutputFormat;
 }
 
-Q_DECLARE_METATYPE(std::shared_ptr<sigrok::Device>)
+Q_DECLARE_METATYPE(shared_ptr<sigrok::Device>)
 
 class QAction;
 
@@ -55,7 +56,7 @@ class MainWindow;
 class Session;
 
 namespace views {
-namespace TraceView {
+namespace trace {
 class View;
 }
 }
@@ -85,7 +86,7 @@ private:
 
 public:
 	MainBar(Session &session, QWidget *parent,
-		pv::views::TraceView::View *view);
+		pv::views::trace::View *view);
 
 	void update_device_list();
 
@@ -126,9 +127,9 @@ private Q_SLOTS:
 
 	void add_decoder(srd_decoder *decoder);
 
-	void export_file(std::shared_ptr<sigrok::OutputFormat> format,
+	void export_file(shared_ptr<sigrok::OutputFormat> format,
 		bool selection_only = false);
-	void import_file(std::shared_ptr<sigrok::InputFormat> format);
+	void import_file(shared_ptr<sigrok::InputFormat> format);
 
 	void on_device_selected();
 	void on_device_changed();

@@ -21,8 +21,8 @@
 
 #include <libsigrokcxx/libsigrokcxx.hpp>
 
-#include <QLabel>
 #include <QGroupBox>
+#include <QLabel>
 #include <QRadioButton>
 
 #include "connect.hpp"
@@ -41,7 +41,6 @@ using Glib::VariantBase;
 
 using sigrok::ConfigKey;
 using sigrok::Driver;
-using sigrok::Error;
 
 using pv::devices::HardwareDevice;
 

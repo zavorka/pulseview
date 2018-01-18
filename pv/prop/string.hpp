@@ -32,7 +32,7 @@ class String : public Property
 	Q_OBJECT;
 
 public:
-	String(QString name, Getter getter, Setter setter);
+	String(QString name, QString desc, Getter getter, Setter setter);
 
 	QWidget* get_widget(QWidget *parent, bool auto_commit);
 
@@ -45,7 +45,7 @@ private:
 	QLineEdit *line_edit_;
 };
 
-} // prop
-} // pv
+}  // namespace prop
+}  // namespace pv
 
 #endif // PULSEVIEW_PV_PROP_STRING_HPP

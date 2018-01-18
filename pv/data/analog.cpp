@@ -37,7 +37,7 @@ Analog::Analog() :
 
 void Analog::push_segment(shared_ptr<AnalogSegment> &segment)
 {
-	segments_.push_front(segment);
+	segments_.push_back(segment);
 }
 
 const deque< shared_ptr<AnalogSegment> >& Analog::analog_segments() const
@@ -51,19 +51,37 @@ vector< shared_ptr<Segment> > Analog::segments() const
 		segments_.begin(), segments_.end());
 }
 
+uint32_t Analog::get_segment_count() const
+{
+	return (uint32_t)segments_.size();
+}
+
 void Analog::clear()
 {
 	segments_.clear();
+
+	samples_cleared();
 }
 
 uint64_t Analog::max_sample_count() const
 {
 	uint64_t l = 0;
-	for (const std::shared_ptr<AnalogSegment> s : segments_) {
+	for (const shared_ptr<AnalogSegment> s : segments_) {
 		assert(s);
 		l = max(l, s->get_sample_count());
 	}
 	return l;
+}
+
+void Analog::notify_samples_added(QObject* segment, uint64_t start_sample,
+	uint64_t end_sample)
+{
+	samples_added(segment, start_sample, end_sample);
+}
+
+void Analog::notify_min_max_changed(float min, float max)
+{
+	min_max_changed(min, max);
 }
 
 } // namespace data

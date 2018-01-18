@@ -21,16 +21,23 @@
 #ifndef PULSEVIEW_PV_VIEWS_VIEWBASE_HPP
 #define PULSEVIEW_PV_VIEWS_VIEWBASE_HPP
 
-#include <stdint.h>
-
+#include <cstdint>
 #include <memory>
-#include <set>
+#include <unordered_set>
 #include <vector>
 
+#include <QTimer>
 #include <QWidget>
 
 #include <pv/data/signalbase.hpp>
 #include <pv/util.hpp>
+
+#ifdef ENABLE_DECODE
+#include <pv/data/decodesignal.hpp>
+#endif
+
+using std::shared_ptr;
+using std::unordered_set;
 
 namespace pv {
 
@@ -48,23 +55,36 @@ enum ViewType {
 	ViewTypeTabularDecode
 };
 
-class ViewBase : public QWidget {
+class ViewBase : public QWidget
+{
 	Q_OBJECT
 
+private:
+	static const int MaxViewAutoUpdateRate;
+
 public:
-	explicit ViewBase(Session &session, QWidget *parent = 0);
+	explicit ViewBase(Session &session, bool is_main_view = false, QWidget *parent = nullptr);
 
 	Session& session();
 	const Session& session() const;
 
 	virtual void clear_signals();
 
+	/**
+	 * Returns the signal bases contained in this view.
+	 */
+	unordered_set< shared_ptr<data::SignalBase> > signalbases() const;
+
+	virtual void clear_signalbases();
+
+	virtual void add_signalbase(const shared_ptr<data::SignalBase> signalbase);
+
 #ifdef ENABLE_DECODE
 	virtual void clear_decode_signals();
 
-	virtual void add_decode_signal(std::shared_ptr<data::SignalBase> signalbase);
+	virtual void add_decode_signal(shared_ptr<data::DecodeSignal> signal);
 
-	virtual void remove_decode_signal(std::shared_ptr<data::SignalBase> signalbase);
+	virtual void remove_decode_signal(shared_ptr<data::DecodeSignal> signal);
 #endif
 
 	virtual void save_settings(QSettings &settings) const;
@@ -75,12 +95,29 @@ public Q_SLOTS:
 	virtual void trigger_event(util::Timestamp location);
 	virtual void signals_changed();
 	virtual void capture_state_updated(int state);
-	virtual void data_updated();
+	virtual void on_new_segment(int new_segment_id);
+	virtual void on_segment_completed(int new_segment_id);
+	virtual void perform_delayed_view_update();
+
+private Q_SLOTS:
+	void on_samples_added(QObject* segment, uint64_t start_sample,
+		uint64_t end_sample);
+
+	void on_data_updated();
 
 protected:
 	Session &session_;
 
+	const bool is_main_view_;
+
 	util::TimeUnit time_unit_;
+
+	unordered_set< shared_ptr<data::SignalBase> > signalbases_;
+
+	/// The ID of the currently displayed segment
+	uint32_t current_segment_;
+
+	QTimer delayed_view_updater_;
 };
 
 } // namespace views

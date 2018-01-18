@@ -1,8 +1,8 @@
-.TH PULSEVIEW 1 "December 16, 2015"
+.TH PULSEVIEW 1 "June 6, 2017"
 .SH "NAME"
 PulseView \- Qt-based LA/scope/MSO GUI for sigrok
 .SH "SYNOPSIS"
-.B pulseview \fR[\fBOPTIONS\fR] [\fBfile.sr\fR]
+.B pulseview \fR[\fBOPTIONS\fR] [\fBFILE\fR]
 .SH "DESCRIPTION"
 .B PulseView
 is a cross-platform Qt-based GUI for the
@@ -14,8 +14,9 @@ oscilloscopes, MSOs, and more.
 has very few command line options, as most configuration elements are
 available from the GUI itself.
 .sp
-If the optional \fBfile.sr\fR argument is supplied, PulseView tries to open
-the specified file. It has to be in the "libsigrok session" format.
+If the optional \fBFILE\fR argument is supplied, PulseView tries to open
+the specified file. It has to be in the "libsigrok session" format (.sr)
+unless -I is used to specify the input file format.
 .TP
 .B "\-l, \-\-loglevel"
 Set the libsigrok and libsigrokdecode loglevel. At the moment PulseView
@@ -40,6 +41,12 @@ Show a help text and exit.
 .B "\-V, \-\-version"
 Show version information and exit.
 .TP
+.BR "\-d, \-\-driver " <drivername>
+Specify the capture device to connect to. If the
+.B \-\-driver
+option is not supplied, PulseView attempts to re-connect to the
+most recently used device, or auto-detect available devices.
+.TP
 .BR "\-i, \-\-input\-file " <filename>
 Load input from a file. If the
 .B \-\-input\-format
@@ -48,6 +55,11 @@ file.
 .TP
 .BR "\-I, \-\-input\-format " <format>
 Specifies the format of the input file to be loaded.
+.TP
+.BR "\-c, \-\-clean"
+Prevents the previously used sessions to be restored from settings storage.
+This is useful if you want only a single session with the file given on the
+command line instead of restoring all previously used sessions as well.
 .SH "KEYBOARD SHORTCUTS"
 .TP
 .B "f"
@@ -57,7 +69,14 @@ Zoom-to-fit.
 Zoom 1:1.
 .TP
 .B "s"
-Enable / disable sticky scrolling.
+Enable / disable sticky scrolling. When enabled, the right edge of the screen
+always shows the most recently captured data.
+.TP
+.B "."
+Show / hide sampling points.
+.TP
+.B "g"
+Show / hide analog minor grid (in addition to the vdiv grid).
 .TP
 .B "c"
 Show / hide cursors.
@@ -68,9 +87,6 @@ gray trace backgrounds.
 .TP
 .B "SPACE"
 Start / stop an acquisition.
-.TP
-.B "ALT"
-Show / hide the menu.
 .TP
 .B "Arrow keys"
 Scroll up/down/left/right.
@@ -97,7 +113,10 @@ Zoom in.
 Zoom out.
 .TP
 .B "CTRL+q"
-Quit, i.e. shutdown PulseView.
+Quit, i.e. shutdown PulseView (closing all session tabs).
+.TP
+.B "CTRL+w"
+Close the current session tab.
 .SH "EXIT STATUS"
 .B PulseView
 exits with 0 on success, 1 on most failures.

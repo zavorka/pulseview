@@ -22,16 +22,18 @@
 
 #include <libsigrokcxx/libsigrokcxx.hpp>
 
+using std::string;
+
 namespace pv {
 
 class AndroidAssetReader : public sigrok::ResourceReader
 {
 public:
-	AndroidAssetReader() {}
-	virtual ~AndroidAssetReader();
+	AndroidAssetReader() = default;
+	virtual ~AndroidAssetReader() = default;
 
 private:
-	void open(struct sr_resource *res, std::string name) override;
+	void open(struct sr_resource *res, string name) override;
 	void close(struct sr_resource *res) override;
 	size_t read(const struct sr_resource *res, void *buf, size_t count) override;
 };

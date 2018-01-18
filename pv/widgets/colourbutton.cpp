@@ -19,7 +19,7 @@
 
 #include "colourbutton.hpp"
 
-#include <assert.h>
+#include <cassert>
 
 #include <QApplication>
 #include <QPainter>
@@ -61,7 +61,7 @@ void ColourButton::set_colour(QColor colour)
 				popup_.well_array().setSelected(r, c);
 				popup_.well_array().setCurrent(r, c);
 				return;
-			}	
+			}
 }
 
 void ColourButton::set_palette(const QColor *const palette)
@@ -102,5 +102,5 @@ void ColourButton::paintEvent(QPaintEvent *event)
 	p.drawRect(r);
 }
 
-} // widgets
-} // pv
+}  // namespace widgets
+}  // namespace pv

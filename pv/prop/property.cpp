@@ -22,10 +22,11 @@
 namespace pv {
 namespace prop {
 
-Property::Property(QString name, Getter getter, Setter setter) :
+Property::Property(QString name, QString desc, Getter getter, Setter setter) :
 	getter_(getter),
 	setter_(setter),
-	name_(name)
+	name_(name),
+	desc_(desc)
 {
 }
 
@@ -34,10 +35,15 @@ const QString& Property::name() const
 	return name_;
 }
 
+const QString& Property::desc() const
+{
+	return desc_;
+}
+
 bool Property::labeled_widget() const
 {
 	return false;
 }
 
-} // prop
-} // pv
+}  // namespace prop
+}  // namespace pv
